@@ -1,0 +1,10 @@
+.env
+data/currents/*.nc
+data/trajectories/*.zarr
+data/trajectories/*.nc
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.streamlit/
+.DS_Store
+*.egg-info/

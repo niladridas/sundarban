@@ -1,0 +1,26 @@
+name: driftscope
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - parcels>=3.0
+  - copernicusmarine>=2.0
+  - cdsapi>=0.7
+  - xarray
+  - netcdf4
+  - zarr
+  - numpy
+  - pandas
+  - matplotlib
+  - cartopy
+  - streamlit
+  - pydeck
+  - plotly
+  - python-dotenv
+  - tqdm
+  - scipy
+  - rich
+  - pip
+  - pip:
+      - streamlit-folium
+      - folium
