@@ -24,13 +24,17 @@ from driftscope.config import (
     DRIFTERS_DIR,
     PRESETS,
     SimConfig,
+    TIDES_DIR,
     TRAJ_DIR,
     WAVES_DIR,
+    WINDS_DIR,
 )
 from driftscope.drifters import fetch_drifter_tracks, output_path as drifters_output_path
 from driftscope.fetch import fetch_currents, output_path
 from driftscope.simulate import run_simulation
 from driftscope.stokes import fetch_stokes, output_path as stokes_output_path
+from driftscope.tides import fetch_tides, output_path as tides_output_path
+from driftscope.winds import fetch_winds, output_path as winds_output_path
 from driftscope.viz import accumulation_grid, load_trajectories, traj_to_dataframe
 
 
@@ -208,12 +212,56 @@ with st.sidebar:
     else:
         stokes_scale = 1.0
 
+    include_tides = st.toggle(
+        "Tidal currents (TPXO9 via pyTMD)",
+        value=False,
+        help=(
+            "Adds barotropic tidal currents from a global tide model. "
+            "Critical for shelf/delta regions like the Sundarbans where tides "
+            "dominate the surface flow. CMEMS forecast filters tides out, so "
+            "this is the only way to capture them. "
+            "Requires a one-time TPXO9 download — see .env.example."
+        ),
+    )
+
+    include_winds = st.toggle(
+        "Wind drag / windage (ERA5)",
+        value=False,
+        help=(
+            "Adds α × U_10m direct wind drag on the air-exposed fraction of "
+            "floating objects. Same ERA5/CDS auth as Stokes — no extra setup."
+        ),
+    )
+    if include_winds:
+        windage_pct = st.slider(
+            "Windage coefficient", 1.0, 5.0, 3.0, step=0.5,
+            format="%.1f%%",
+            help=(
+                "Fraction of 10m wind speed added to surface velocity. "
+                "Typical: 1% icebergs · 2% persons · 3% plastic debris · "
+                "3.5% oil slicks."
+            ),
+        )
+        windage_coeff = windage_pct / 100.0
+    else:
+        windage_coeff = 0.03
+
     st.divider()
     fetch_btn = st.button("⬇️  Fetch currents", width="stretch")
     fetch_waves_btn = st.button(
         "🌊  Fetch waves (ERA5)", width="stretch",
         disabled=not include_stokes,
         help="Enabled when Stokes drift is on.",
+    )
+    fetch_tides_btn = st.button(
+        "🌙  Compute tides (pyTMD)", width="stretch",
+        disabled=not include_tides,
+        help="Enabled when tidal currents is on. Requires TIDE_MODEL_DIR in .env.",
+    )
+    fetch_winds_btn = st.button(
+        "💨  Fetch winds (ERA5)", width="stretch",
+        disabled=not include_winds,
+        help="Enabled when wind drag is on. Same CDS auth as waves.",
     )
     sim_btn = st.button("▶️  Run simulation", type="primary", width="stretch")
     compare_btn = st.button(
@@ -285,6 +333,8 @@ def _latest_traj() -> Path | None:
 bbox = (lon_min, lat_min, lon_max, lat_max)
 currents_path = output_path(region_name, str(start_date), str(end_date))
 waves_path = stokes_output_path(region_name, str(start_date), str(end_date))
+tides_path = tides_output_path(region_name, str(start_date), str(end_date))
+winds_path = winds_output_path(region_name, str(start_date), str(end_date))
 
 if fetch_btn:
     with st.spinner(f"Downloading CMEMS currents for {region_name}…"):
@@ -321,6 +371,47 @@ if fetch_waves_btn:
                 "Free key: https://cds.climate.copernicus.eu/api-how-to"
             )
 
+if fetch_tides_btn:
+    if not currents_path.exists():
+        st.error("Need to fetch CMEMS currents first — tides are computed on the same grid.")
+    else:
+        with st.spinner(f"Predicting tidal currents for {region_name}…"):
+            try:
+                fetch_tides(
+                    bbox=bbox,
+                    start_date=str(start_date),
+                    end_date=str(end_date),
+                    region_name=region_name,
+                    currents_nc=currents_path,
+                )
+                st.success(f"✓ Saved {tides_path.name}")
+            except Exception as e:
+                st.error(f"Tide prediction failed: {e}")
+                st.info(
+                    "Setup checklist:\n"
+                    "1. Register at https://www.tpxo.net (free)\n"
+                    "2. Download TPXO9-atlas-v5 (~1 GB, NetCDF format)\n"
+                    "3. Set `TIDE_MODEL_DIR` in `.env` to the unpacked directory\n"
+                    "4. `pip install pyTMD` (if not already installed)"
+                )
+
+if fetch_winds_btn:
+    with st.spinner(f"Downloading ERA5 winds for {region_name} (CDS queue can take a few min)…"):
+        try:
+            fetch_winds(
+                bbox=bbox,
+                start_date=str(start_date),
+                end_date=str(end_date),
+                region_name=region_name,
+            )
+            st.success(f"✓ Saved {winds_path.name}")
+        except Exception as e:
+            st.error(f"Wind fetch failed: {e}")
+            st.info(
+                "Same CDS API setup as waves — `CDSAPI_URL` + `CDSAPI_KEY` in `.env`, "
+                "or a `~/.cdsapirc` file."
+            )
+
 def _ensure_currents():
     """Resolve the currents NetCDF or stop with an error message."""
     if currents_path.exists():
@@ -342,6 +433,30 @@ def _ensure_waves():
         st.info(f"Using cached waves: {existing[-1].name}")
         return existing[-1]
     st.error("Stokes is enabled but no waves file exists. Click 🌊 Fetch waves first.")
+    st.stop()
+
+
+def _ensure_tides():
+    """Resolve the tides NetCDF or stop with an error message."""
+    if tides_path.exists():
+        return tides_path
+    existing = sorted(TIDES_DIR.glob("*.nc"), key=lambda p: p.stat().st_mtime)
+    if existing:
+        st.info(f"Using cached tides: {existing[-1].name}")
+        return existing[-1]
+    st.error("Tides enabled but no tide file exists. Click 🌙 Compute tides first.")
+    st.stop()
+
+
+def _ensure_winds():
+    """Resolve the winds NetCDF or stop with an error message."""
+    if winds_path.exists():
+        return winds_path
+    existing = sorted(WINDS_DIR.glob("*.nc"), key=lambda p: p.stat().st_mtime)
+    if existing:
+        st.info(f"Using cached winds: {existing[-1].name}")
+        return existing[-1]
+    st.error("Wind drag enabled but no winds file exists. Click 💨 Fetch winds first.")
     st.stop()
 
 
@@ -369,6 +484,8 @@ if sim_btn:
 
     currents_path = _ensure_currents()
     stokes_arg = _ensure_waves() if include_stokes else None
+    tides_arg = _ensure_tides() if include_tides else None
+    winds_arg = _ensure_winds() if include_winds else None
 
     cfg = SimConfig(
         n_particles=n_particles,
@@ -379,10 +496,16 @@ if sim_btn:
         seed_mode=seed_mode,
         include_stokes=include_stokes,
         stokes_scale=stokes_scale,
+        include_tides=include_tides,
+        include_winds=include_winds,
+        windage_coeff=windage_coeff,
     )
     with st.spinner(f"Advecting {n_particles} particles for {runtime_days} days…"):
         try:
-            traj_path = run_simulation(currents_path, cfg, stokes_nc=stokes_arg)
+            traj_path = run_simulation(
+                currents_path, cfg,
+                stokes_nc=stokes_arg, tides_nc=tides_arg, winds_nc=winds_arg,
+            )
             st.success(f"✓ Trajectories: {traj_path.name}")
             st.session_state["traj_path"] = str(traj_path)
         except Exception as e:
@@ -392,6 +515,8 @@ if sim_btn:
 if compare_btn:
     currents_path = _ensure_currents()
     waves_path = _ensure_waves()
+    tides_arg = _ensure_tides() if include_tides else None
+    winds_arg = _ensure_winds() if include_winds else None
 
     base_cfg = dict(
         n_particles=n_particles,
@@ -400,15 +525,24 @@ if compare_btn:
         seed_lat=seed_lat,
         seed_radius_deg=seed_radius,
         seed_mode=seed_mode,
+        include_tides=include_tides,
+        include_winds=include_winds,
+        windage_coeff=windage_coeff,
     )
     cfg_off = SimConfig(**base_cfg, include_stokes=False, stokes_scale=1.0)
     cfg_on = SimConfig(**base_cfg, include_stokes=True, stokes_scale=stokes_scale)
 
     try:
         with st.spinner("A/B run 1/2: currents only…"):
-            traj_off = run_simulation(currents_path, cfg_off)
+            traj_off = run_simulation(
+                currents_path, cfg_off,
+                tides_nc=tides_arg, winds_nc=winds_arg,
+            )
         with st.spinner(f"A/B run 2/2: currents + Stokes (×{stokes_scale:.1f})…"):
-            traj_on = run_simulation(currents_path, cfg_on, stokes_nc=waves_path)
+            traj_on = run_simulation(
+                currents_path, cfg_on,
+                stokes_nc=waves_path, tides_nc=tides_arg, winds_nc=winds_arg,
+            )
 
         mean_km, med_km, n = _stokes_shift_km(traj_off, traj_on)
         st.success(
@@ -450,11 +584,19 @@ if include_stokes:
     st.caption(
         f"🌊 Stokes drift active · scale={stokes_scale:.1f}× · waves file: `{waves_label}`"
     )
+if include_tides:
+    tides_label = tides_path.name if tides_path.exists() else "— (click 🌙 Compute tides)"
+    st.caption(f"🌙 Tides active · file: `{tides_label}`")
+if include_winds:
+    winds_label = winds_path.name if winds_path.exists() else "— (click 💨 Fetch winds)"
+    st.caption(
+        f"💨 Wind drag active · α={windage_coeff*100:.1f}% · winds file: `{winds_label}`"
+    )
 
 
 # ── Tabs ─────────────────────────────────────────────────────────────────────
-tab_drift, tab_accum, tab_currents, tab_validate = st.tabs(
-    ["🌀 Drift", "🔥 Accumulation", "🌊 Currents", "🛰️ Validation"]
+tab_drift, tab_accum, tab_currents, tab_validate, tab_diag = st.tabs(
+    ["🌀 Drift", "🔥 Accumulation", "🌊 Currents", "🛰️ Validation", "🔬 Diagnostics"]
 )
 
 
@@ -898,8 +1040,58 @@ with tab_validate:
             st.pydeck_chart(deck, width="stretch", height=600)
 
 
+# ── Tab 5: Eulerian diagnostics (GOFLOW-style 2×2 panel) ─────────────────────
+with tab_diag:
+    st.markdown("### Velocity field diagnostics")
+    st.caption(
+        "Eulerian quantities derived from the CMEMS U/V field — same panels as "
+        "the GOFLOW figure: **(a)** speed + vectors, **(b)** log|∇V| highlights "
+        "fronts and gradients, **(c)** **ζ/f** (relative vorticity / Coriolis), "
+        "**(d)** **δ/f** (divergence / Coriolis). When |ζ/f| approaches or exceeds "
+        "1, ageostrophic dynamics dominate — that's where eddy edges, filaments, "
+        "and submesoscale fronts live."
+    )
+
+    if not currents_path.exists():
+        st.info("Fetch CMEMS currents first — diagnostics are computed from U/V.")
+    else:
+        from driftscope.diagnostics import plot_diagnostics
+        import matplotlib.pyplot as plt
+
+        ds_d = xr.open_dataset(currents_path)
+        lon_name = "longitude" if "longitude" in ds_d.coords else "lon"
+        lat_name = "latitude" if "latitude" in ds_d.coords else "lat"
+        n_t = ds_d.sizes["time"]
+
+        ti = st.slider(
+            "Time", 0, max(n_t - 1, 0), max(n_t - 1, 0),
+            key="diag_ti",
+            help="Pick which CMEMS time slice to diagnose.",
+        )
+        u = ds_d.uo.isel(time=ti).squeeze().values
+        v = ds_d.vo.isel(time=ti).squeeze().values
+        lats = ds_d[lat_name].values
+        lons = ds_d[lon_name].values
+        time_str = pd.Timestamp(ds_d.time.values[ti]).strftime("%Y-%m-%d %H:%M UTC")
+
+        with st.spinner("Computing diagnostics…"):
+            fig = plot_diagnostics(
+                u, v, lats, lons,
+                time_str=time_str,
+                dark=(map_theme == "Dark"),
+            )
+        st.pyplot(fig)
+        plt.close(fig)  # avoid Streamlit figure accumulation
+
+        st.caption(
+            "Note: panels are derived from raw CMEMS — Stokes drift and tides "
+            "(if active in your simulation) aren't included here. The diagnostic "
+            "purpose is to characterize the underlying ocean state."
+        )
+
+
 # ── Footer ───────────────────────────────────────────────────────────────────
 st.divider()
 st.caption(
-    "DriftScope v0.3  ·  CMEMS currents + ERA5 Stokes drift + GDP drifters  ·  OceanParcels"
+    "DriftScope v0.6  ·  CMEMS + ERA5 Stokes + TPXO9 tides + ERA5 windage + GDP drifters + diagnostics  ·  OceanParcels"
 )

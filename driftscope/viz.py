@@ -15,10 +15,21 @@ import xarray as xr
 
 
 def load_trajectories(traj_path: Path) -> xr.Dataset:
-    """Open a Parcels trajectory output (Zarr or NetCDF)."""
+    """Open a Parcels trajectory output (Zarr or NetCDF).
+
+    Parcels v3 writes asymmetric chunks when DeleteOOB removes particles
+    mid-run: `z` (depth) ends up one obs step shorter than lat/lon/time and
+    xarray refuses to open the Zarr. We don't need depth for 2D viz, so we
+    fall back to dropping `z`.
+    """
     p = Path(traj_path)
     if p.suffix == ".zarr" or p.is_dir():
-        return xr.open_zarr(p)
+        try:
+            return xr.open_zarr(p)
+        except ValueError as e:
+            if "obs" in str(e) and "z" in str(e):
+                return xr.open_zarr(p, drop_variables=["z"])
+            raise
     return xr.open_dataset(p)
 
 

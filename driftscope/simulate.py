@@ -44,51 +44,113 @@ def latest_currents_file() -> Path:
     return files[-1]
 
 
-def combine_currents_and_stokes(
-    currents_nc: Path, stokes_nc: Path, scale: float = 1.0
+def combine_forcings(
+    currents_nc: Path,
+    stokes_nc: Path | None = None,
+    tides_nc: Path | None = None,
+    winds_nc: Path | None = None,
+    stokes_scale: float = 1.0,
+    windage_coeff: float = 0.03,
 ) -> Path:
-    """Regrid Stokes drift onto the CMEMS currents grid and add to U/V.
+    """Build a single U/V NetCDF that sums the requested forcings.
 
-    `scale` multiplies the derived Stokes magnitude before it's added (Phillips
-    prefactor varies 1×–8× across literature; this exposes the choice).
+    - Currents (always): CMEMS at native (typically daily) cadence.
+    - Stokes (optional): ERA5-derived; regridded to currents grid, scaled.
+    - Tides (optional): pyTMD predictions at hourly cadence — when included,
+      the output is at the *tides* time grid (hourly), with daily currents
+      forward-filled to each hour. This preserves M2/S2 oscillations that
+      would otherwise be averaged away.
+    - Winds (optional): ERA5 10m wind, multiplied by `windage_coeff` (typical
+      0.01–0.04) and added to U/V. Captures direct wind drag on the
+      air-exposed fraction of floating objects.
 
-    The cache filename includes the scale so different scales don't collide.
-    Re-runs are cheap: regenerated only if either input is newer.
+    Cache filename encodes which forcings are active so different combos
+    don't collide. Re-runs are cheap: regenerated only if any input is newer.
     """
-    out = currents_nc.with_name(f"{currents_nc.stem}__stokes_s{scale:.1f}.nc")
+    tag = []
+    if stokes_nc is not None:
+        tag.append(f"stokes{stokes_scale:.1f}")
+    if tides_nc is not None:
+        tag.append("tides")
+    if winds_nc is not None:
+        tag.append(f"wind{windage_coeff*100:.1f}pct")
+    suffix = ("__" + "_".join(tag)) if tag else "__currents_only"
+    out = currents_nc.with_name(f"{currents_nc.stem}{suffix}.nc")
+
+    inputs = [currents_nc] + [p for p in (stokes_nc, tides_nc, winds_nc) if p is not None]
     if out.exists():
         out_mtime = out.stat().st_mtime
-        if out_mtime >= currents_nc.stat().st_mtime and out_mtime >= stokes_nc.stat().st_mtime:
+        if all(out_mtime >= p.stat().st_mtime for p in inputs):
             return out
 
     cur = xr.open_dataset(currents_nc)
-    wav = xr.open_dataset(stokes_nc)
-
-    # Newer ERA5 downloads use `valid_time`; older use `time`.
-    if "valid_time" in wav.coords and "time" not in wav.coords:
-        wav = wav.rename({"valid_time": "time"})
-
     cur_lon = "longitude" if "longitude" in cur.coords else "lon"
     cur_lat = "latitude" if "latitude" in cur.coords else "lat"
-    wav_lon = "longitude" if "longitude" in wav.coords else "lon"
-    wav_lat = "latitude" if "latitude" in wav.coords else "lat"
 
-    # Interpolate Stokes onto the currents (lon, lat, time) grid.
-    # ERA5 is coarser than CMEMS, so this is upsampling — purely smoothing.
-    interp_kwargs = {
-        wav_lon: cur[cur_lon],
-        wav_lat: cur[cur_lat],
-        "time": cur["time"],
-    }
-    ust = wav["ust"].interp(**interp_kwargs).fillna(0.0) * scale
-    vst = wav["vst"].interp(**interp_kwargs).fillna(0.0) * scale
+    # Pick the time grid: tides (hourly) wins if present, else currents (daily).
+    if tides_nc is not None:
+        tid = xr.open_dataset(tides_nc)
+        time_grid = tid["time"]
+        cur_resampled = cur.reindex(time=time_grid, method="nearest")
+    else:
+        time_grid = cur["time"]
+        cur_resampled = cur
 
-    combined = cur.copy()
-    # Broadcast Stokes (no depth dim) over the currents' depth dim if present.
-    combined["uo"] = cur["uo"] + ust
-    combined["vo"] = cur["vo"] + vst
+    uo = cur_resampled["uo"].copy()
+    vo = cur_resampled["vo"].copy()
+
+    if stokes_nc is not None:
+        wav = xr.open_dataset(stokes_nc)
+        if "valid_time" in wav.coords and "time" not in wav.coords:
+            wav = wav.rename({"valid_time": "time"})
+        wav_lon = "longitude" if "longitude" in wav.coords else "lon"
+        wav_lat = "latitude" if "latitude" in wav.coords else "lat"
+        ust = wav["ust"].interp(
+            {wav_lon: cur[cur_lon], wav_lat: cur[cur_lat], "time": time_grid},
+        ).fillna(0.0) * stokes_scale
+        vst = wav["vst"].interp(
+            {wav_lon: cur[cur_lon], wav_lat: cur[cur_lat], "time": time_grid},
+        ).fillna(0.0) * stokes_scale
+        uo = uo + ust
+        vo = vo + vst
+
+    if tides_nc is not None:
+        tid_lon = "longitude" if "longitude" in tid.coords else "lon"
+        tid_lat = "latitude" if "latitude" in tid.coords else "lat"
+        u_tide = tid["u_tide"].interp(
+            {tid_lon: cur[cur_lon], tid_lat: cur[cur_lat], "time": time_grid},
+        ).fillna(0.0)
+        v_tide = tid["v_tide"].interp(
+            {tid_lon: cur[cur_lon], tid_lat: cur[cur_lat], "time": time_grid},
+        ).fillna(0.0)
+        uo = uo + u_tide
+        vo = vo + v_tide
+
+    if winds_nc is not None:
+        wnd = xr.open_dataset(winds_nc)
+        if "valid_time" in wnd.coords and "time" not in wnd.coords:
+            wnd = wnd.rename({"valid_time": "time"})
+        wnd_lon = "longitude" if "longitude" in wnd.coords else "lon"
+        wnd_lat = "latitude" if "latitude" in wnd.coords else "lat"
+        u10 = wnd["u10"].interp(
+            {wnd_lon: cur[cur_lon], wnd_lat: cur[cur_lat], "time": time_grid},
+        ).fillna(0.0) * windage_coeff
+        v10 = wnd["v10"].interp(
+            {wnd_lon: cur[cur_lon], wnd_lat: cur[cur_lat], "time": time_grid},
+        ).fillna(0.0) * windage_coeff
+        uo = uo + u10
+        vo = vo + v10
+
+    combined = cur_resampled.copy()
+    combined["uo"] = uo
+    combined["vo"] = vo
     combined.to_netcdf(out)
     return out
+
+
+# Backward-compat alias — older code/tests still call this name.
+def combine_currents_and_stokes(currents_nc, stokes_nc, scale=1.0):
+    return combine_forcings(currents_nc, stokes_nc=stokes_nc, stokes_scale=scale)
 
 
 def seed_disk(
@@ -106,11 +168,15 @@ def run_simulation(
     out_path: Path | None = None,
     seed: int = 42,
     stokes_nc: Path | None = None,
+    tides_nc: Path | None = None,
+    winds_nc: Path | None = None,
 ) -> Path:
     """Advect `cfg.n_particles` particles for `cfg.runtime_days` days.
 
-    If `cfg.include_stokes` is True and `stokes_nc` is provided, surface Stokes
-    drift is added to the current velocity at the data layer before advection.
+    Optional forcings are added at the data layer before advection:
+      - cfg.include_stokes + stokes_nc → ERA5-derived surface Stokes drift
+      - cfg.include_tides + tides_nc   → pyTMD barotropic tidal currents
+      - cfg.include_winds + winds_nc   → ERA5 10m wind × cfg.windage_coeff
 
     Returns the path to the trajectory file (Zarr).
     """
@@ -123,13 +189,25 @@ def run_simulation(
         StatusCode,
     )
 
-    if cfg.include_stokes and stokes_nc is not None:
-        console.print(
-            f"[cyan]·[/cyan] adding Stokes drift from {stokes_nc.name} "
-            f"(scale={cfg.stokes_scale:.1f})"
-        )
-        currents_nc = combine_currents_and_stokes(
-            currents_nc, stokes_nc, scale=cfg.stokes_scale
+    use_stokes = cfg.include_stokes and stokes_nc is not None
+    use_tides = cfg.include_tides and tides_nc is not None
+    use_winds = cfg.include_winds and winds_nc is not None
+    if use_stokes or use_tides or use_winds:
+        active = []
+        if use_stokes:
+            active.append(f"Stokes×{cfg.stokes_scale:.1f}")
+        if use_tides:
+            active.append("tides")
+        if use_winds:
+            active.append(f"wind×{cfg.windage_coeff*100:.1f}%")
+        console.print(f"[cyan]·[/cyan] forcings: currents + {' + '.join(active)}")
+        currents_nc = combine_forcings(
+            currents_nc,
+            stokes_nc=stokes_nc if use_stokes else None,
+            tides_nc=tides_nc if use_tides else None,
+            winds_nc=winds_nc if use_winds else None,
+            stokes_scale=cfg.stokes_scale,
+            windage_coeff=cfg.windage_coeff,
         )
 
     console.print(f"[cyan]·[/cyan] loading currents: {currents_nc.name}")
@@ -262,6 +340,12 @@ def main() -> None:
                    help="ERA5 Stokes-drift NetCDF (from `python -m driftscope.stokes`)")
     p.add_argument("--stokes-scale", type=float, default=1.0,
                    help="multiplier on Stokes magnitude (1.0 baseline, ~8.0 = OpenDrift)")
+    p.add_argument("--tides", type=Path, default=None,
+                   help="pyTMD tide NetCDF (from `python -m driftscope.tides`)")
+    p.add_argument("--winds", type=Path, default=None,
+                   help="ERA5 wind NetCDF (from `python -m driftscope.winds`)")
+    p.add_argument("--windage", type=float, default=0.03,
+                   help="windage coefficient (default 0.03 = 3%%)")
     p.add_argument("--region", default=DEFAULT_REGION, choices=list(PRESETS.keys()),
                    help="if seed-lon/lat omitted, use this region's center")
     args = p.parse_args()
@@ -283,9 +367,15 @@ def main() -> None:
         seed_mode=args.seed_mode,
         include_stokes=args.stokes is not None,
         stokes_scale=args.stokes_scale,
+        include_tides=args.tides is not None,
+        include_winds=args.winds is not None,
+        windage_coeff=args.windage,
     )
 
-    run_simulation(currents, cfg, stokes_nc=args.stokes)
+    run_simulation(
+        currents, cfg,
+        stokes_nc=args.stokes, tides_nc=args.tides, winds_nc=args.winds,
+    )
 
 
 if __name__ == "__main__":

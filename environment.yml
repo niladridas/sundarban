@@ -6,6 +6,7 @@ dependencies:
   - parcels>=3.0
   - copernicusmarine>=2.0
   - cdsapi>=0.7
+  - pytmd>=2.0
   - xarray
   - netcdf4
   - zarr

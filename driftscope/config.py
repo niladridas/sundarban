@@ -13,12 +13,14 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 CURRENTS_DIR = DATA / "currents"
 WAVES_DIR = DATA / "waves"
+WINDS_DIR = DATA / "winds"
 TIDES_DIR = DATA / "tides"
 DRIFTERS_DIR = DATA / "drifters"
 TRAJ_DIR = DATA / "trajectories"
 
 CURRENTS_DIR.mkdir(parents=True, exist_ok=True)
 WAVES_DIR.mkdir(parents=True, exist_ok=True)
+WINDS_DIR.mkdir(parents=True, exist_ok=True)
 TIDES_DIR.mkdir(parents=True, exist_ok=True)
 DRIFTERS_DIR.mkdir(parents=True, exist_ok=True)
 TRAJ_DIR.mkdir(parents=True, exist_ok=True)
@@ -97,6 +99,12 @@ ERA5_WAVE_VARIABLES = [
 ]
 ERA5_TIMES = [f"{h:02d}:00" for h in range(0, 24, 6)]  # 6-hourly snapshots
 
+# 10m wind components — same dataset, same auth, same time grid as the waves.
+ERA5_WIND_VARIABLES = [
+    "10m_u_component_of_wind",   # u10, m/s
+    "10m_v_component_of_wind",   # v10, m/s
+]
+
 
 # ── Global Drifter Program (NOAA AOML) ───────────────────────────────────────
 # Hourly QC'd surface drifter positions, full historical archive. No auth needed.
@@ -134,3 +142,7 @@ class SimConfig:
     # to 8π³ (OpenDrift). 1.0 = our baseline; ~8.0 matches the stronger end.
     stokes_scale: float = 1.0
     include_tides: bool = False    # add pyTMD barotropic tides to advection
+    include_winds: bool = False    # add ERA5 10m wind drag (windage)
+    # Fraction of 10m wind speed added to surface velocity. Typical values:
+    #   0.01 (icebergs), 0.02 (people), 0.03 (plastic debris), 0.035 (oil slicks).
+    windage_coeff: float = 0.03
