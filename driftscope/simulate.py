@@ -6,12 +6,22 @@ CLI:
 """
 from __future__ import annotations
 import argparse
+import warnings
 from datetime import timedelta
 from pathlib import Path
 
 import numpy as np
 import xarray as xr
 from rich.console import Console
+
+# parcels v3 + NumPy 2.x: spam from particledata.py using `where=` without `out=`.
+# Library-internal, not our bug; remove this filter once parcels patches upstream.
+warnings.filterwarnings(
+    "ignore",
+    message=r".*'where' used without 'out'.*",
+    category=UserWarning,
+    module=r"parcels\..*",
+)
 
 from .config import (
     CURRENTS_DIR,

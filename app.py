@@ -21,11 +21,13 @@ import xarray as xr
 
 from driftscope.config import (
     CURRENTS_DIR,
+    DRIFTERS_DIR,
     PRESETS,
     SimConfig,
     TRAJ_DIR,
     WAVES_DIR,
 )
+from driftscope.drifters import fetch_drifter_tracks, output_path as drifters_output_path
 from driftscope.fetch import fetch_currents, output_path
 from driftscope.simulate import run_simulation
 from driftscope.stokes import fetch_stokes, output_path as stokes_output_path
@@ -321,7 +323,6 @@ if fetch_waves_btn:
 
 def _ensure_currents():
     """Resolve the currents NetCDF or stop with an error message."""
-    global currents_path
     if currents_path.exists():
         return currents_path
     existing = sorted(CURRENTS_DIR.glob("*.nc"), key=lambda p: p.stat().st_mtime)
@@ -334,7 +335,6 @@ def _ensure_currents():
 
 def _ensure_waves():
     """Resolve the waves NetCDF or stop with an error message."""
-    global waves_path
     if waves_path.exists():
         return waves_path
     existing = sorted(WAVES_DIR.glob("*.nc"), key=lambda p: p.stat().st_mtime)
@@ -453,8 +453,8 @@ if include_stokes:
 
 
 # ── Tabs ─────────────────────────────────────────────────────────────────────
-tab_drift, tab_accum, tab_currents = st.tabs(
-    ["🌀 Drift", "🔥 Accumulation", "🌊 Currents"]
+tab_drift, tab_accum, tab_currents, tab_validate = st.tabs(
+    ["🌀 Drift", "🔥 Accumulation", "🌊 Currents", "🛰️ Validation"]
 )
 
 
@@ -536,95 +536,95 @@ with tab_drift:
         if traj_path is None or not Path(traj_path).exists():
             st.info("No simulation yet. Set parameters in the sidebar and click **▶️ Run simulation**.")
         else:
-        ds = load_trajectories(traj_path)
-        df = traj_to_dataframe(ds)
-        n_traj = df["traj"].nunique()
-        n_obs = df["obs"].nunique() if "obs" in df.columns else len(df)
+            ds = load_trajectories(traj_path)
+            df = traj_to_dataframe(ds)
+            n_traj = df["traj"].nunique()
+            n_obs = df["obs"].nunique() if "obs" in df.columns else len(df)
 
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Active trajectories", n_traj)
-        m2.metric("Time steps", n_obs)
-        if n_traj > 0:
-            starts = df.sort_values("time").groupby("traj").head(1)
-            ends = df.sort_values("time").groupby("traj").tail(1)
-            # Mean great-circle-ish distance (small-angle approx)
-            dlon = (ends["lon"].values - starts["lon"].values) * np.cos(
-                np.radians(starts["lat"].values)
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Active trajectories", n_traj)
+            m2.metric("Time steps", n_obs)
+            if n_traj > 0:
+                starts = df.sort_values("time").groupby("traj").head(1)
+                ends = df.sort_values("time").groupby("traj").tail(1)
+                # Mean great-circle-ish distance (small-angle approx)
+                dlon = (ends["lon"].values - starts["lon"].values) * np.cos(
+                    np.radians(starts["lat"].values)
+                )
+                dlat = ends["lat"].values - starts["lat"].values
+                mean_disp_km = float(np.mean(np.sqrt(dlon**2 + dlat**2))) * 111.0
+                m3.metric("Mean displacement", f"{mean_disp_km:.1f} km")
+
+            st.markdown("##### Particle paths")
+            st.caption("Green = release  ·  Red = current/final position")
+
+            # Animation slider — show progressive trail up to time index t
+            times = sorted(df["time"].unique())
+            t_idx = st.slider(
+                "Time",
+                min_value=0,
+                max_value=len(times) - 1,
+                value=len(times) - 1,
+                help="Drag to scrub through the simulation",
             )
-            dlat = ends["lat"].values - starts["lat"].values
-            mean_disp_km = float(np.mean(np.sqrt(dlon**2 + dlat**2))) * 111.0
-            m3.metric("Mean displacement", f"{mean_disp_km:.1f} km")
+            t_now = times[t_idx]
+            st.caption(f"📅 {pd.Timestamp(t_now).strftime('%Y-%m-%d %H:%M UTC')}")
 
-        st.markdown("##### Particle paths")
-        st.caption("Green = release  ·  Red = current/final position")
+            # Build trail data up to t_now
+            trail_df = df[df["time"] <= t_now]
+            paths = (
+                trail_df.sort_values("time")
+                .groupby("traj")
+                .agg({"lon": list, "lat": list})
+                .reset_index()
+            )
+            paths["path"] = paths.apply(
+                lambda r: list(zip(r["lon"], r["lat"])), axis=1
+            )
 
-        # Animation slider — show progressive trail up to time index t
-        times = sorted(df["time"].unique())
-        t_idx = st.slider(
-            "Time",
-            min_value=0,
-            max_value=len(times) - 1,
-            value=len(times) - 1,
-            help="Drag to scrub through the simulation",
-        )
-        t_now = times[t_idx]
-        st.caption(f"📅 {pd.Timestamp(t_now).strftime('%Y-%m-%d %H:%M UTC')}")
+            head_df = (
+                trail_df.sort_values("time")
+                .groupby("traj")
+                .tail(1)[["lon", "lat"]]
+            )
+            seed_df = df.sort_values("time").groupby("traj").head(1)[["lon", "lat"]]
 
-        # Build trail data up to t_now
-        trail_df = df[df["time"] <= t_now]
-        paths = (
-            trail_df.sort_values("time")
-            .groupby("traj")
-            .agg({"lon": list, "lat": list})
-            .reset_index()
-        )
-        paths["path"] = paths.apply(
-            lambda r: list(zip(r["lon"], r["lat"])), axis=1
-        )
+            # ── pydeck layers ────────────────────────────────────────────────────
+            path_layer = pdk.Layer(
+                "PathLayer",
+                data=paths,
+                get_path="path",
+                get_color=[59, 130, 246, 140],
+                width_min_pixels=1.2,
+                pickable=False,
+            )
+            head_layer = pdk.Layer(
+                "ScatterplotLayer",
+                data=head_df,
+                get_position=["lon", "lat"],
+                get_fill_color=[239, 68, 68, 230],
+                get_radius=350,
+                radius_min_pixels=2,
+                radius_max_pixels=4,
+            )
+            seed_layer = pdk.Layer(
+                "ScatterplotLayer",
+                data=seed_df,
+                get_position=["lon", "lat"],
+                get_fill_color=[16, 185, 129, 200],
+                get_radius=300,
+                radius_min_pixels=2,
+                radius_max_pixels=3,
+            )
 
-        head_df = (
-            trail_df.sort_values("time")
-            .groupby("traj")
-            .tail(1)[["lon", "lat"]]
-        )
-        seed_df = df.sort_values("time").groupby("traj").head(1)[["lon", "lat"]]
-
-        # ── pydeck layers ────────────────────────────────────────────────────
-        path_layer = pdk.Layer(
-            "PathLayer",
-            data=paths,
-            get_path="path",
-            get_color=[59, 130, 246, 140],
-            width_min_pixels=1.2,
-            pickable=False,
-        )
-        head_layer = pdk.Layer(
-            "ScatterplotLayer",
-            data=head_df,
-            get_position=["lon", "lat"],
-            get_fill_color=[239, 68, 68, 230],
-            get_radius=350,
-            radius_min_pixels=2,
-            radius_max_pixels=4,
-        )
-        seed_layer = pdk.Layer(
-            "ScatterplotLayer",
-            data=seed_df,
-            get_position=["lon", "lat"],
-            get_fill_color=[16, 185, 129, 200],
-            get_radius=300,
-            radius_min_pixels=2,
-            radius_max_pixels=3,
-        )
-
-        deck = pdk.Deck(
-            layers=[path_layer, seed_layer, head_layer],
-            initial_view_state=_bbox_view_state(*bbox),
-            map_provider="carto",
-            map_style=map_theme.lower(),
-            tooltip=False,
-        )
-        st.pydeck_chart(deck, width="stretch", height=600)
+            deck = pdk.Deck(
+                layers=[path_layer, seed_layer, head_layer],
+                initial_view_state=_bbox_view_state(*bbox),
+                map_provider="carto",
+                map_style=map_theme.lower(),
+                tooltip=False,
+            )
+            st.pydeck_chart(deck, width="stretch", height=600)
 
 
 # ── Tab 2: Accumulation heatmap ──────────────────────────────────────────────
@@ -753,8 +753,153 @@ with tab_currents:
         st.plotly_chart(fig, width="stretch")
 
 
+# ── Tab 4: Validation against real drifters ──────────────────────────────────
+with tab_validate:
+    st.markdown("### Real drifter overlay")
+    st.caption(
+        "Real Global Drifter Program tracks (drogued at 15m, GPS-tracked, QC'd by NOAA AOML) "
+        "overlaid on your simulation. The single most credible validation image you can make. "
+        "**Source:** [AOML GDP ERDDAP](https://erddap.aoml.noaa.gov/gdp/erddap/)."
+    )
+
+    drifters_path = drifters_output_path(region_name, str(start_date), str(end_date))
+
+    cdv1, cdv2 = st.columns([1, 1])
+    with cdv1:
+        fetch_d_btn = st.button(
+            "⬇️  Fetch drifter tracks for this region/time",
+            width="stretch",
+            help=(
+                "Queries AOML's ERDDAP for any GDP drifter that passed through "
+                "the current bbox during the time window. Results are cached."
+            ),
+        )
+    with cdv2:
+        force_d = st.checkbox("Force re-fetch", value=False)
+
+    if fetch_d_btn:
+        with st.spinner("Querying AOML ERDDAP…"):
+            try:
+                fetch_drifter_tracks(
+                    bbox=bbox,
+                    start_date=str(start_date),
+                    end_date=str(end_date),
+                    region_name=region_name,
+                    force=force_d,
+                )
+                st.success(f"✓ Saved {drifters_path.name}")
+            except Exception as e:
+                st.error(f"Drifter fetch failed: {e}")
+                st.info(
+                    "If the dataset name is the issue, edit `DRIFTER_ERDDAP_URL` "
+                    "in `driftscope/config.py`. The default points at "
+                    "`drifter_hourly_qc` — alternatives include `drifter_6hour_qc`."
+                )
+
+    if drifters_path.exists():
+        df_d = pd.read_csv(drifters_path, parse_dates=["time"])
+        if len(df_d) == 0:
+            st.warning(
+                "No drifters in this bbox/time window. The `drifter_hourly_qc` "
+                "archive lags real-time by ~1–2 years, and the Bay of Bengal has "
+                "sparse drifter coverage. Validated examples that return data: "
+                "**Northern BoB · 2020-01-01 → 2020-12-31** (2 drifters), or any "
+                "wider Indian Ocean window. Try widening the bbox or shifting earlier."
+            )
+        else:
+            n_d = df_d["ID"].nunique()
+            mcol1, mcol2, mcol3 = st.columns(3)
+            mcol1.metric("Drifters in bbox", n_d)
+            mcol2.metric("Total observations", f"{len(df_d):,}")
+            mcol3.metric(
+                "Time span",
+                f"{(df_d['time'].max() - df_d['time'].min()).days} days"
+                if len(df_d) > 1 else "—",
+            )
+
+            # Optional: allow narrowing to a single drifter
+            drifter_ids = ["(all)"] + sorted(df_d["ID"].astype(str).unique().tolist())
+            chosen = st.selectbox("Drifter", drifter_ids, index=0)
+            if chosen != "(all)":
+                df_d = df_d[df_d["ID"].astype(str) == chosen]
+
+            # Build pydeck layers
+            d_paths = (
+                df_d.sort_values("time")
+                .groupby("ID")
+                .agg({"lon": list, "lat": list})
+                .reset_index()
+            )
+            d_paths["path"] = d_paths.apply(
+                lambda r: list(zip(r["lon"], r["lat"])), axis=1
+            )
+            d_starts = df_d.sort_values("time").groupby("ID").head(1)[["lon", "lat"]]
+            d_heads = df_d.sort_values("time").groupby("ID").tail(1)[["lon", "lat"]]
+
+            layers: list = [
+                pdk.Layer(
+                    "PathLayer", data=d_paths, get_path="path",
+                    get_color=[6, 182, 212, 230],          # cyan
+                    width_min_pixels=2.5, pickable=False,
+                ),
+                pdk.Layer(
+                    "ScatterplotLayer", data=d_starts, get_position=["lon", "lat"],
+                    get_fill_color=[16, 185, 129, 220],    # green = release
+                    get_radius=350, radius_min_pixels=3, radius_max_pixels=5,
+                ),
+                pdk.Layer(
+                    "ScatterplotLayer", data=d_heads, get_position=["lon", "lat"],
+                    get_fill_color=[251, 191, 36, 240],    # amber = current
+                    get_radius=400, radius_min_pixels=3, radius_max_pixels=6,
+                ),
+            ]
+
+            # Sim trajectories overlay (if any exist)
+            sim_str = st.session_state.get("traj_path")
+            sim_path = Path(sim_str) if sim_str else _latest_traj()
+            if sim_path and Path(sim_path).exists():
+                df_s = traj_to_dataframe(load_trajectories(Path(sim_path)))
+                s_paths = (
+                    df_s.sort_values("time")
+                    .groupby("traj")
+                    .agg({"lon": list, "lat": list})
+                    .reset_index()
+                )
+                s_paths["path"] = s_paths.apply(
+                    lambda r: list(zip(r["lon"], r["lat"])), axis=1
+                )
+                layers.insert(
+                    0,
+                    pdk.Layer(
+                        "PathLayer", data=s_paths, get_path="path",
+                        get_color=[59, 130, 246, 90],      # faint blue, behind drifters
+                        width_min_pixels=0.8, pickable=False,
+                    ),
+                )
+                st.caption(
+                    "🔵 your simulation (faint)   ·   "
+                    "🟢 drifter release   ·   "
+                    "🔷 drifter track   ·   "
+                    "🟡 drifter latest position"
+                )
+            else:
+                st.info(
+                    "Run a simulation in the sidebar to overlay your model on these "
+                    "drifter tracks."
+                )
+
+            deck = pdk.Deck(
+                layers=layers,
+                initial_view_state=_bbox_view_state(*bbox),
+                map_provider="carto",
+                map_style=map_theme.lower(),
+                tooltip=False,
+            )
+            st.pydeck_chart(deck, width="stretch", height=600)
+
+
 # ── Footer ───────────────────────────────────────────────────────────────────
 st.divider()
 st.caption(
-    "DriftScope v0.2  ·  CMEMS currents + ERA5 Stokes drift  ·  OceanParcels"
+    "DriftScope v0.3  ·  CMEMS currents + ERA5 Stokes drift + GDP drifters  ·  OceanParcels"
 )

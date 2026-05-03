@@ -13,10 +13,14 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 CURRENTS_DIR = DATA / "currents"
 WAVES_DIR = DATA / "waves"
+TIDES_DIR = DATA / "tides"
+DRIFTERS_DIR = DATA / "drifters"
 TRAJ_DIR = DATA / "trajectories"
 
 CURRENTS_DIR.mkdir(parents=True, exist_ok=True)
 WAVES_DIR.mkdir(parents=True, exist_ok=True)
+TIDES_DIR.mkdir(parents=True, exist_ok=True)
+DRIFTERS_DIR.mkdir(parents=True, exist_ok=True)
 TRAJ_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -94,6 +98,23 @@ ERA5_WAVE_VARIABLES = [
 ERA5_TIMES = [f"{h:02d}:00" for h in range(0, 24, 6)]  # 6-hourly snapshots
 
 
+# ── Global Drifter Program (NOAA AOML) ───────────────────────────────────────
+# Hourly QC'd surface drifter positions, full historical archive. No auth needed.
+# If the dataset name changes upstream, swap the URL here.
+DRIFTER_ERDDAP_URL = (
+    "https://erddap.aoml.noaa.gov/gdp/erddap/tabledap/drifter_hourly_qc.csv"
+)
+
+
+# ── Tides (pyTMD + TPXO9-atlas) ──────────────────────────────────────────────
+# Barotropic tidal currents from a global ocean tide model. Required for
+# coastal/delta drift modeling (CMEMS forecast filters tides out).
+# Setup: download TPXO9-atlas-v5 (or FES2014) and set TIDE_MODEL_DIR in .env.
+TIDE_MODEL_NAME = "TPXO9-atlas-v5"
+# Tide prediction time step (hours). 1h captures M2/S2 well; 3h is a tradeoff.
+TIDE_DT_HOURS = 1
+
+
 # ── Simulation defaults ──────────────────────────────────────────────────────
 @dataclass
 class SimConfig:
@@ -112,3 +133,4 @@ class SimConfig:
     # Phillips-approximation prefactor anywhere from π³ (textbook narrow-band)
     # to 8π³ (OpenDrift). 1.0 = our baseline; ~8.0 matches the stronger end.
     stokes_scale: float = 1.0
+    include_tides: bool = False    # add pyTMD barotropic tides to advection
