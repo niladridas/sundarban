@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" role="img" aria-label="DriftScope hero banner">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#020617"/>
+      <stop offset="50%" stop-color="#0c1e3e"/>
+      <stop offset="100%" stop-color="#1e3a8a"/>
+    </linearGradient>
+    <linearGradient id="trail" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0"/>
+      <stop offset="40%" stop-color="#10b981" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#ef4444" stop-opacity="1"/>
+    </linearGradient>
+    <linearGradient id="trail2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0"/>
+      <stop offset="40%" stop-color="#3b82f6" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#ef4444" stop-opacity="1"/>
+    </linearGradient>
+    <linearGradient id="trail3" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0"/>
+      <stop offset="40%" stop-color="#8b5cf6" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#ef4444" stop-opacity="1"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#10b981" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e3a8a" stroke-opacity="0.3" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="360" fill="url(#bg)"/>
+  <rect width="1200" height="360" fill="url(#grid)"/>
+
+  <!-- Stylized coastline (Sundarbans-ish silhouette) -->
+  <path d="M 0,360 L 0,240 Q 80,235 140,250 Q 200,260 260,245 Q 320,235 380,255 Q 430,270 480,260 L 480,360 Z"
+        fill="#0a1628" opacity="0.85"/>
+  <path d="M 0,250 Q 80,245 140,260 Q 200,270 260,255 Q 320,245 380,265 Q 430,280 480,270"
+        fill="none" stroke="#1e293b" stroke-width="1.5" opacity="0.9"/>
+
+  <!-- Faint river/delta texture -->
+  <path d="M 80,260 Q 120,275 100,300 M 180,255 Q 220,280 200,310 M 280,250 Q 310,275 290,305 M 360,260 Q 400,285 380,315"
+        fill="none" stroke="#1e3a8a" stroke-width="1" opacity="0.5"/>
+
+  <!-- Glow at seed point -->
+  <ellipse cx="220" cy="200" rx="55" ry="55" fill="url(#glow)"/>
+
+  <!-- Particle trails (Bezier paths) -->
+  <g opacity="0.95">
+    <path d="M 220,200 Q 380,180 540,170 Q 720,165 900,180 Q 1020,195 1120,180"
+          fill="none" stroke="url(#trail)" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 220,200 Q 360,210 520,205 Q 700,210 880,225 Q 1010,235 1110,225"
+          fill="none" stroke="url(#trail2)" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 220,200 Q 400,160 580,140 Q 760,135 940,150 Q 1050,160 1140,150"
+          fill="none" stroke="url(#trail3)" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 220,200 Q 350,220 510,235 Q 680,255 860,260 Q 990,265 1100,260"
+          fill="none" stroke="url(#trail)" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/>
+    <path d="M 220,200 Q 390,195 560,190 Q 740,200 920,205 Q 1040,210 1130,205"
+          fill="none" stroke="url(#trail2)" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+    <path d="M 220,200 Q 340,170 480,165 Q 660,170 840,180 Q 970,190 1080,185"
+          fill="none" stroke="url(#trail3)" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+  </g>
+
+  <!-- Seed dot (release point) -->
+  <circle cx="220" cy="200" r="6" fill="#10b981"/>
+  <circle cx="220" cy="200" r="6" fill="none" stroke="#10b981" stroke-width="1.5" opacity="0.6">
+    <animate attributeName="r" from="6" to="20" dur="2s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" from="0.6" to="0" dur="2s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- Particle heads -->
+  <g>
+    <circle cx="1120" cy="180" r="4" fill="#ef4444"/>
+    <circle cx="1110" cy="225" r="3.5" fill="#ef4444"/>
+    <circle cx="1140" cy="150" r="3.5" fill="#ef4444"/>
+    <circle cx="1100" cy="260" r="3" fill="#ef4444" opacity="0.85"/>
+    <circle cx="1130" cy="205" r="3" fill="#ef4444" opacity="0.85"/>
+    <circle cx="1080" cy="185" r="3" fill="#ef4444" opacity="0.85"/>
+  </g>
+
+  <!-- Title -->
+  <text x="50" y="90" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="64" font-weight="800" fill="#f8fafc" letter-spacing="-2">
+    DriftScope
+  </text>
+  <text x="50" y="125" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="400" fill="#94a3b8" letter-spacing="0.5">
+    Lagrangian particle tracking on satellite-derived ocean currents
+  </text>
+
+  <!-- Tagline pills -->
+  <g font-family="system-ui, sans-serif" font-size="12" font-weight="500">
+    <rect x="50" y="305" width="120" height="28" rx="14" fill="#10b981" fill-opacity="0.15" stroke="#10b981" stroke-opacity="0.5"/>
+    <text x="110" y="324" fill="#10b981" text-anchor="middle">▶  hourly resolution</text>
+
+    <rect x="180" y="305" width="120" height="28" rx="14" fill="#3b82f6" fill-opacity="0.15" stroke="#3b82f6" stroke-opacity="0.5"/>
+    <text x="240" y="324" fill="#60a5fa" text-anchor="middle">⟶  region-agnostic</text>
+
+    <rect x="310" y="305" width="120" height="28" rx="14" fill="#8b5cf6" fill-opacity="0.15" stroke="#8b5cf6" stroke-opacity="0.5"/>
+    <text x="370" y="324" fill="#a78bfa" text-anchor="middle">◇  modular physics</text>
+  </g>
+</svg>

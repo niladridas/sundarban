@@ -16,14 +16,13 @@ WAVES_DIR = DATA / "waves"
 WINDS_DIR = DATA / "winds"
 TIDES_DIR = DATA / "tides"
 DRIFTERS_DIR = DATA / "drifters"
+SST_DIR = DATA / "sst"
+CHL_DIR = DATA / "chlorophyll"
 TRAJ_DIR = DATA / "trajectories"
 
-CURRENTS_DIR.mkdir(parents=True, exist_ok=True)
-WAVES_DIR.mkdir(parents=True, exist_ok=True)
-WINDS_DIR.mkdir(parents=True, exist_ok=True)
-TIDES_DIR.mkdir(parents=True, exist_ok=True)
-DRIFTERS_DIR.mkdir(parents=True, exist_ok=True)
-TRAJ_DIR.mkdir(parents=True, exist_ok=True)
+for d in (CURRENTS_DIR, WAVES_DIR, WINDS_DIR, TIDES_DIR, DRIFTERS_DIR,
+          SST_DIR, CHL_DIR, TRAJ_DIR):
+    d.mkdir(parents=True, exist_ok=True)
 
 
 # ── Region presets ───────────────────────────────────────────────────────────
@@ -104,6 +103,24 @@ ERA5_WIND_VARIABLES = [
     "10m_u_component_of_wind",   # u10, m/s
     "10m_v_component_of_wind",   # v10, m/s
 ]
+
+
+# ── CMEMS SST L4 (OSTIA) ─────────────────────────────────────────────────────
+# Daily ~5km global gap-filled SST analysis from UK Met Office, distributed
+# via CMEMS. Same auth as currents. The dataset id may shift across CMEMS
+# catalog revisions — if the fetch fails with "dataset not found", check the
+# CMEMS catalog and update this constant.
+CMEMS_SST_DATASET_ID = "METOFFICE-GLO-SST-L4-NRT-OBS-SST-V2"
+CMEMS_SST_VARIABLES = ["analysed_sst"]  # Kelvin
+
+
+# ── CMEMS Chlorophyll-a L4 (Ocean Color CCI) ─────────────────────────────────
+# Daily ~4km gap-filled chlorophyll-a (multi-sensor merged: MODIS, VIIRS,
+# OLCI). The MY (multi-year reanalysis) product covers 1997–present with
+# a ~6-month lag; the NRT product covers the most recent ~30 days.
+# Variable: CHL in mg m⁻³ (typically log-distributed: 0.01 → 50).
+CMEMS_CHL_DATASET_ID = "cmems_obs-oc_glo_bgc-plankton_my_l4-multi-4km_P1D"
+CMEMS_CHL_VARIABLES = ["CHL"]
 
 
 # ── Global Drifter Program (NOAA AOML) ───────────────────────────────────────

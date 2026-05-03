@@ -20,18 +20,22 @@ import streamlit as st
 import xarray as xr
 
 from driftscope.config import (
+    CHL_DIR,
     CURRENTS_DIR,
     DRIFTERS_DIR,
     PRESETS,
+    SST_DIR,
     SimConfig,
     TIDES_DIR,
     TRAJ_DIR,
     WAVES_DIR,
     WINDS_DIR,
 )
+from driftscope.chlorophyll import fetch_chlorophyll, output_path as chl_output_path
 from driftscope.drifters import fetch_drifter_tracks, output_path as drifters_output_path
 from driftscope.fetch import fetch_currents, output_path
 from driftscope.simulate import run_simulation
+from driftscope.sst import fetch_sst, output_path as sst_output_path
 from driftscope.stokes import fetch_stokes, output_path as stokes_output_path
 from driftscope.tides import fetch_tides, output_path as tides_output_path
 from driftscope.winds import fetch_winds, output_path as winds_output_path
@@ -595,8 +599,9 @@ if include_winds:
 
 
 # ── Tabs ─────────────────────────────────────────────────────────────────────
-tab_drift, tab_accum, tab_currents, tab_validate, tab_diag = st.tabs(
-    ["🌀 Drift", "🔥 Accumulation", "🌊 Currents", "🛰️ Validation", "🔬 Diagnostics"]
+tab_drift, tab_accum, tab_currents, tab_validate, tab_diag, tab_sst, tab_chl = st.tabs(
+    ["🌀 Drift", "🔥 Accumulation", "🌊 Currents", "🛰️ Validation",
+     "🔬 Diagnostics", "🌡️ SST", "🌿 Chlorophyll"]
 )
 
 
@@ -1090,8 +1095,120 @@ with tab_diag:
         )
 
 
+# ── Tab 6: Sea surface temperature (OSTIA L4 satellite obs) ──────────────────
+with tab_sst:
+    st.markdown("### Sea surface temperature  ·  OSTIA L4")
+    st.caption(
+        "Daily ~5 km satellite SST (UK Met Office, distributed by CMEMS). "
+        "Sharp horizontal gradients are **fronts**, where submesoscale convergence "
+        "aggregates floating debris. Overlaying particle endpoints on SST is a "
+        "first-order check: do your particles pile up where fronts say they should?"
+    )
+
+    sst_path = sst_output_path(region_name, str(start_date), str(end_date))
+
+    csst1, csst2 = st.columns([1, 1])
+    with csst1:
+        fetch_sst_btn = st.button(
+            "⬇️  Fetch SST for this region/time",
+            width="stretch",
+            help="Same CMEMS auth as currents. ~5km daily, gap-filled.",
+        )
+    with csst2:
+        overlay_traj_sst = st.checkbox(
+            "Overlay particle endpoints",
+            value=True,
+            help="Show your latest simulation's final particle positions as white dots.",
+        )
+
+    if fetch_sst_btn:
+        with st.spinner("Downloading CMEMS OSTIA SST…"):
+            try:
+                fetch_sst(
+                    bbox=bbox,
+                    start_date=str(start_date),
+                    end_date=str(end_date),
+                    region_name=region_name,
+                )
+                st.success(f"✓ Saved {sst_path.name}")
+            except Exception as e:
+                st.error(f"SST fetch failed: {e}")
+                st.info(
+                    "If you see 'dataset not found', the CMEMS catalog may have "
+                    "renamed the OSTIA L4 product. Update `CMEMS_SST_DATASET_ID` "
+                    "in `driftscope/config.py`."
+                )
+
+    if sst_path.exists():
+        ds_sst = xr.open_dataset(sst_path)
+        sst_lon_name = "longitude" if "longitude" in ds_sst.coords else "lon"
+        sst_lat_name = "latitude" if "latitude" in ds_sst.coords else "lat"
+        n_t = ds_sst.sizes["time"]
+
+        ti_sst = st.slider(
+            "Time", 0, max(n_t - 1, 0), max(n_t - 1, 0),
+            key="sst_ti",
+        )
+        sst_kelvin = ds_sst["analysed_sst"].isel(time=ti_sst).squeeze().values
+        sst_celsius = sst_kelvin - 273.15
+        time_str = pd.Timestamp(ds_sst.time.values[ti_sst]).strftime("%Y-%m-%d")
+        st.caption(f"📅 {time_str}")
+
+        import plotly.graph_objects as go
+
+        fig = go.Figure()
+        fig.add_trace(
+            go.Heatmap(
+                x=ds_sst[sst_lon_name].values,
+                y=ds_sst[sst_lat_name].values,
+                z=sst_celsius,
+                colorscale="RdYlBu_r",
+                colorbar=dict(title="SST (°C)", thickness=12),
+                hovertemplate="lon=%{x:.2f}°  lat=%{y:.2f}°<br>SST=%{z:.2f}°C<extra></extra>",
+            )
+        )
+
+        if overlay_traj_sst:
+            sim_str = st.session_state.get("traj_path")
+            sim_path = Path(sim_str) if sim_str else _latest_traj()
+            if sim_path and Path(sim_path).exists():
+                df_sim = traj_to_dataframe(load_trajectories(Path(sim_path)))
+                ends = df_sim.sort_values("time").groupby("traj").tail(1)
+                fig.add_trace(
+                    go.Scatter(
+                        x=ends["lon"], y=ends["lat"],
+                        mode="markers",
+                        marker=dict(
+                            color="white", size=4,
+                            line=dict(color="black", width=0.5),
+                        ),
+                        name="particle endpoints",
+                        hoverinfo="skip",
+                    )
+                )
+
+        fig.update_layout(
+            template="plotly_white" if map_theme == "Light" else "plotly_dark",
+            height=600,
+            margin=dict(l=0, r=0, t=10, b=0),
+            xaxis_title="Longitude",
+            yaxis_title="Latitude",
+            yaxis=dict(scaleanchor="x", scaleratio=1),
+            showlegend=False,
+        )
+        st.plotly_chart(fig, width="stretch")
+
+        # Quick summary stats so you can quote them in a report
+        finite = sst_celsius[np.isfinite(sst_celsius)]
+        if finite.size:
+            scol1, scol2, scol3 = st.columns(3)
+            scol1.metric("Min SST", f"{finite.min():.2f}°C")
+            scol2.metric("Mean SST", f"{finite.mean():.2f}°C")
+            scol3.metric("Max SST", f"{finite.max():.2f}°C")
+
+
 # ── Footer ───────────────────────────────────────────────────────────────────
 st.divider()
 st.caption(
-    "DriftScope v0.6  ·  CMEMS + ERA5 Stokes + TPXO9 tides + ERA5 windage + GDP drifters + diagnostics  ·  OceanParcels"
+    "DriftScope v0.7  ·  CMEMS + ERA5 Stokes + TPXO9 tides + windage + GDP drifters + OSTIA SST  ·  OceanParcels"
 )

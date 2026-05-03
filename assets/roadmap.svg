@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 280" role="img" aria-label="DriftScope roadmap">
+  <defs>
+    <linearGradient id="rbg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#020617"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="done" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="next" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="future" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#334155"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="280" fill="url(#rbg)"/>
+
+  <text x="60" y="50" font-family="system-ui" font-size="20" font-weight="700" fill="#f8fafc">Roadmap</text>
+  <text x="60" y="72" font-family="system-ui" font-size="13" fill="#64748b">each module = one new term in dX/dt</text>
+
+  <!-- Timeline rail -->
+  <line x1="80" y1="170" x2="1140" y2="170" stroke="#1e293b" stroke-width="2"/>
+  <line x1="80" y1="170" x2="350" y2="170" stroke="#10b981" stroke-width="3"/>
+
+  <!-- Module nodes -->
+  <g font-family="system-ui" font-size="12" font-weight="600">
+    <!-- 1. Currents (DONE) -->
+    <circle cx="135" cy="170" r="22" fill="url(#done)"/>
+    <text x="135" y="175" fill="#022c22" font-size="13" text-anchor="middle">✓</text>
+    <text x="135" y="135" fill="#10b981" text-anchor="middle">Currents</text>
+    <text x="135" y="210" fill="#64748b" font-size="10" text-anchor="middle" font-weight="400">CMEMS</text>
+
+    <!-- 2. Stokes (DONE) -->
+    <circle cx="270" cy="170" r="22" fill="url(#done)"/>
+    <text x="270" y="175" fill="#022c22" font-size="13" text-anchor="middle">✓</text>
+    <text x="270" y="135" fill="#10b981" text-anchor="middle">Stokes drift</text>
+    <text x="270" y="210" fill="#64748b" font-size="10" text-anchor="middle" font-weight="400">ERA5 waves</text>
+
+    <!-- 3. Tides (NEXT) -->
+    <circle cx="405" cy="170" r="24" fill="url(#next)" stroke="#fbbf24" stroke-width="2"/>
+    <text x="405" y="175" fill="#451a03" font-size="14" text-anchor="middle">→</text>
+    <text x="405" y="135" fill="#fbbf24" text-anchor="middle">Tides</text>
+    <text x="405" y="210" fill="#fbbf24" font-size="10" text-anchor="middle" font-weight="400">TPXO / FES</text>
+    <text x="405" y="225" fill="#94a3b8" font-size="9" text-anchor="middle" font-weight="400">next</text>
+
+    <!-- 4. Wind -->
+    <circle cx="540" cy="170" r="20" fill="url(#future)" stroke="#475569" stroke-width="1.5"/>
+    <text x="540" y="174" fill="#94a3b8" font-size="11" text-anchor="middle">4</text>
+    <text x="540" y="135" fill="#94a3b8" text-anchor="middle">Windage</text>
+    <text x="540" y="210" fill="#475569" font-size="10" text-anchor="middle" font-weight="400">ERA5 wind</text>
+
+    <!-- 5. Settling -->
+    <circle cx="675" cy="170" r="20" fill="url(#future)" stroke="#475569" stroke-width="1.5"/>
+    <text x="675" y="174" fill="#94a3b8" font-size="11" text-anchor="middle">5</text>
+    <text x="675" y="135" fill="#94a3b8" text-anchor="middle">Settling</text>
+    <text x="675" y="210" fill="#475569" font-size="10" text-anchor="middle" font-weight="400">SPM physics</text>
+
+    <!-- 6. GOFLOW -->
+    <circle cx="810" cy="170" r="20" fill="url(#future)" stroke="#475569" stroke-width="1.5"/>
+    <text x="810" y="174" fill="#94a3b8" font-size="11" text-anchor="middle">6</text>
+    <text x="810" y="135" fill="#94a3b8" text-anchor="middle">GOFLOW</text>
+    <text x="810" y="210" fill="#475569" font-size="10" text-anchor="middle" font-weight="400">submesoscale</text>
+
+    <!-- 7. NIR -->
+    <circle cx="945" cy="170" r="20" fill="url(#future)" stroke="#475569" stroke-width="1.5"/>
+    <text x="945" y="174" fill="#94a3b8" font-size="11" text-anchor="middle">7</text>
+    <text x="945" y="135" fill="#94a3b8" text-anchor="middle">NIR SPM</text>
+    <text x="945" y="210" fill="#475569" font-size="10" text-anchor="middle" font-weight="400">Sentinel-2/3</text>
+
+    <!-- 8. SAR -->
+    <circle cx="1080" cy="170" r="20" fill="url(#future)" stroke="#475569" stroke-width="1.5"/>
+    <text x="1080" y="174" fill="#94a3b8" font-size="11" text-anchor="middle">8</text>
+    <text x="1080" y="135" fill="#94a3b8" text-anchor="middle">SAR fronts</text>
+    <text x="1080" y="210" fill="#475569" font-size="10" text-anchor="middle" font-weight="400">Sentinel-1</text>
+  </g>
+
+  <!-- Legend -->
+  <g font-family="system-ui" font-size="11" font-weight="500">
+    <circle cx="900" cy="50" r="6" fill="url(#done)"/>
+    <text x="912" y="54" fill="#94a3b8">shipped</text>
+
+    <circle cx="975" cy="50" r="6" fill="url(#next)"/>
+    <text x="987" y="54" fill="#94a3b8">in progress</text>
+
+    <circle cx="1075" cy="50" r="6" fill="url(#future)" stroke="#475569"/>
+    <text x="1087" y="54" fill="#94a3b8">planned</text>
+  </g>
+</svg>
