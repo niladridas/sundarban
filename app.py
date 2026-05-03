@@ -460,12 +460,82 @@ tab_drift, tab_accum, tab_currents = st.tabs(
 
 # ── Tab 1: Drift trajectories ────────────────────────────────────────────────
 with tab_drift:
-    traj_str = st.session_state.get("traj_path")
-    traj_path = Path(traj_str) if traj_str else _latest_traj()
+    ab_mode = st.session_state.get("ab_mode", False)
+    ab_off = st.session_state.get("ab_off_path")
+    ab_on = st.session_state.get("ab_on_path")
+    ab_active = ab_mode and ab_off and ab_on and Path(ab_off).exists() and Path(ab_on).exists()
 
-    if traj_path is None or not Path(traj_path).exists():
-        st.info("No simulation yet. Set parameters in the sidebar and click **▶️ Run simulation**.")
+    if ab_active:
+        df_off = traj_to_dataframe(load_trajectories(Path(ab_off)))
+        df_on = traj_to_dataframe(load_trajectories(Path(ab_on)))
+
+        mean_km, med_km, n = _stokes_shift_km(Path(ab_off), Path(ab_on))
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Particles compared", n)
+        m2.metric("Mean Stokes shift", f"{mean_km:.2f} km")
+        m3.metric("Median Stokes shift", f"{med_km:.2f} km")
+
+        st.markdown("##### A/B overlay")
+        st.caption(
+            "🔵 currents only  ·  🟠 currents + Stokes  ·  🟢 release point. "
+            "Static view (no scrubber) — switch to ▶️ Run simulation for the time slider."
+        )
+
+        def _ab_path_layer(df, color):
+            paths = (
+                df.sort_values("time")
+                .groupby("traj")
+                .agg({"lon": list, "lat": list})
+                .reset_index()
+            )
+            paths["path"] = paths.apply(lambda r: list(zip(r["lon"], r["lat"])), axis=1)
+            return pdk.Layer(
+                "PathLayer", data=paths, get_path="path",
+                get_color=color, width_min_pixels=1.2, pickable=False,
+            )
+
+        def _ab_head_layer(df, color):
+            head_df = df.sort_values("time").groupby("traj").tail(1)[["lon", "lat"]]
+            return pdk.Layer(
+                "ScatterplotLayer", data=head_df, get_position=["lon", "lat"],
+                get_fill_color=color, get_radius=350,
+                radius_min_pixels=2, radius_max_pixels=4,
+            )
+
+        seed_df = df_off.sort_values("time").groupby("traj").head(1)[["lon", "lat"]]
+        seed_layer = pdk.Layer(
+            "ScatterplotLayer", data=seed_df, get_position=["lon", "lat"],
+            get_fill_color=[16, 185, 129, 220], get_radius=300,
+            radius_min_pixels=2, radius_max_pixels=3,
+        )
+
+        deck = pdk.Deck(
+            layers=[
+                _ab_path_layer(df_off, [59, 130, 246, 130]),    # blue
+                _ab_path_layer(df_on, [251, 146, 60, 180]),     # orange
+                seed_layer,
+                _ab_head_layer(df_off, [37, 99, 235, 230]),     # darker blue
+                _ab_head_layer(df_on, [234, 88, 12, 240]),      # darker orange
+            ],
+            initial_view_state=_bbox_view_state(*bbox),
+            map_provider="carto",
+            map_style=map_theme.lower(),
+            tooltip=False,
+        )
+        st.pydeck_chart(deck, width="stretch", height=600)
+
+        if st.button("← Exit A/B view", help="Show only the latest single run"):
+            for k in ("ab_mode", "ab_off_path", "ab_on_path"):
+                st.session_state.pop(k, None)
+            st.rerun()
+
     else:
+        traj_str = st.session_state.get("traj_path")
+        traj_path = Path(traj_str) if traj_str else _latest_traj()
+
+        if traj_path is None or not Path(traj_path).exists():
+            st.info("No simulation yet. Set parameters in the sidebar and click **▶️ Run simulation**.")
+        else:
         ds = load_trajectories(traj_path)
         df = traj_to_dataframe(ds)
         n_traj = df["traj"].nunique()
