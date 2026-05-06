@@ -30,7 +30,8 @@ console = Console()
 
 # ── Inputs ───────────────────────────────────────────────────────────────────
 SPM_NC = SPM_DIR / "sundarbans_spm_2024-03-08.nc"
-CURRENTS_NC = CURRENTS_DIR / "sundarbans_delta_2026-04-17_2026-05-01.nc"
+# Use HYCOM 1/25° (drifter-validated, LW skill 0.852 in BoB) over CMEMS 1/12°.
+CURRENTS_NC = CURRENTS_DIR / "sundarbans_delta_2026-04-17_2026-05-01_hycom.nc"
 TIDES_NC = TIDES_DIR / "sundarbans_delta_2026-04-17_2026-05-01_tides.nc"
 WAVES_NC = WAVES_DIR / "sundarbans_delta_2026-04-17_2026-05-01_waves.nc"
 WINDS_NC = WINDS_DIR / "sundarbans_delta_2026-04-17_2026-05-01_winds.nc"
@@ -42,6 +43,10 @@ RANDOM_SEED = 42
 SETTLE_DIAMETER_UM = 10.0   # silt-class quartz; matches Module 5 default
 SETTLE_DENSITY = 2650.0
 WINDAGE_COEFF = 0.02         # 2% — typical for sediment-laden water (lower than oil)
+# Brownian eddy diffusivity. 100 m²/s is a reasonable BoB default; the drifter
+# validation showed ~150 km error at day 22 in CMEMS, an upper-bound estimate
+# of unresolved-eddy scatter scale.
+BROWNIAN_KH_M2_S = 100.0
 
 
 def sample_spm_weighted_seeds(
@@ -137,9 +142,10 @@ def main() -> Path:
         include_settling=True,
         settling_diameter_um=SETTLE_DIAMETER_UM,
         settling_density_kg_m3=SETTLE_DENSITY,
+        include_brownian=True, brownian_kh=BROWNIAN_KH_M2_S,
     )
 
-    out = TRAJ_DIR / f"coupled_spm_seeded_{RUNTIME_DAYS}d.zarr"
+    out = TRAJ_DIR / f"coupled_spm_hycom_brownian_{RUNTIME_DAYS}d.zarr"
     return run_simulation(
         CURRENTS_NC, cfg,
         out_path=out, seed=RANDOM_SEED,

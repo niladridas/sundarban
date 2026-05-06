@@ -18,8 +18,8 @@ from driftscope.viz import load_trajectories, traj_to_dataframe
 
 ROOT = Path(__file__).resolve().parent.parent
 SPM_NC = SPM_DIR / "sundarbans_spm_2024-03-08.nc"
-TRAJ = TRAJ_DIR / "coupled_spm_seeded_10d.zarr"
-OUT_PNG = ROOT / "data" / "coupled_simulation.png"
+TRAJ = TRAJ_DIR / "coupled_spm_hycom_brownian_10d.zarr"
+OUT_PNG = ROOT / "data" / "coupled_simulation_hycom_brownian.png"
 
 spm = xr.open_dataset(SPM_NC).load().spm_mg_l
 ds = load_trajectories(TRAJ)
@@ -70,7 +70,7 @@ ax.set_ylim(lat_min, lat_max)
 ax.set_aspect("equal")
 ax.set_xlabel("Longitude (°E)")
 ax.set_ylabel("Latitude (°N)")
-ax.set_title("Trajectories\n(currents + tides + Stokes + windage + settling)")
+ax.set_title("Trajectories\n(HYCOM 1/25° + tides + Stokes + windage + settling + Brownian Kh=100)")
 ax.legend(loc="upper right")
 
 # ── Panel 3: Final-position density heatmap

@@ -9,6 +9,10 @@ Reference: https://oceanparcels.org/
 """
 from __future__ import annotations
 
+import math
+
+from parcels import ParcelsRandom  # JIT-compatible RNG for kernels
+
 
 # ── Stokes' law for SPM settling (Module 5) ──────────────────────────────────
 # w_s = (2/9) * (rho_p - rho_w) / mu * g * r^2
@@ -88,6 +92,41 @@ def Settling(particle, fieldset, time):
     a spatial field.
     """
     particle_ddepth += particle.w_settle * particle.dt  # noqa: F821
+
+
+# ── Brownian (sub-grid eddy) diffusion ───────────────────────────────────────
+# Drifter validation showed CMEMS 1/12° currents miss BoB sub-mesoscale eddies
+# (the southward feature ~day 7). HYCOM 1/25° improves things but neither
+# resolves the full eddy spectrum. A random walk per timestep parameterizes
+# the unresolved variability:
+#   dx = sqrt(2 * Kh * |dt|) * N(0, 1) per coordinate
+# where Kh is horizontal eddy diffusivity (m²/s).
+# Typical Kh values:
+#   - 1   m²/s  : conservative; coastal where eddies are small
+#   - 10  m²/s  : open shelf
+#   - 100 m²/s  : open ocean / mesoscale-rich (BoB default)
+#   - 1000 m²/s : strong eddy field (Gulf Stream rings, etc.)
+# 1° lat ≈ 110.574 km; 1° lon ≈ 111.320 km · cos(lat).
+
+DEG_PER_M_LAT = 1.0 / 110574.0
+
+
+def BrownianMotion2D(particle, fieldset, time):
+    """Add 2D Brownian random walk with horizontal diffusivity `fieldset.Kh`.
+
+    Apply *after* AdvectionRK4 (and any settling) in the kernel chain so the
+    deterministic drift is computed first and the stochastic kick is added.
+    """
+    rx = ParcelsRandom.normalvariate(0.0, 1.0)
+    ry = ParcelsRandom.normalvariate(0.0, 1.0)
+    sigma = math.sqrt(2.0 * fieldset.Kh * math.fabs(particle.dt))
+    dx_m = sigma * rx
+    dy_m = sigma * ry
+    # Inline the conversion constants — JIT compilation doesn't capture
+    # module-level Python constants. 110574 m = 1° lat; lon scales with cos(lat).
+    deg_per_m_lon = 1.0 / (111320.0 * math.cos(particle.lat * math.pi / 180.0))
+    particle_dlat += dy_m / 110574.0  # noqa: F821
+    particle_dlon += dx_m * deg_per_m_lon  # noqa: F821
 
 
 # ── Future modules (stubs to make the extension pattern obvious) ─────────────

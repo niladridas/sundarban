@@ -169,3 +169,9 @@ class SimConfig:
     # a representative grain size for the Bay of Bengal SPM size distribution.
     settling_diameter_um: float = 10.0
     settling_density_kg_m3: float = 2650.0  # silica/quartz; lower for organic SPM
+    # ── Brownian (sub-grid eddy) diffusion ────────────────────────────────────
+    # Random walk per timestep parameterizing eddies the model can't resolve.
+    # 100 m²/s is a reasonable BoB default given drifter validation showed
+    # ~150 km error at day 22 in CMEMS — a plausible eddy-induced scatter scale.
+    include_brownian: bool = False
+    brownian_kh: float = 100.0          # horizontal eddy diffusivity, m²/s

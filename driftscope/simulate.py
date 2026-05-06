@@ -195,12 +195,13 @@ def run_simulation(
         StatusCode,
         Variable,
     )
-    from .kernels import Settling, stokes_settling_velocity
+    from .kernels import Settling, BrownianMotion2D, stokes_settling_velocity
 
     use_stokes = cfg.include_stokes and stokes_nc is not None
     use_tides = cfg.include_tides and tides_nc is not None
     use_winds = cfg.include_winds and winds_nc is not None
     use_settling = cfg.include_settling
+    use_brownian = cfg.include_brownian and cfg.brownian_kh > 0
     if use_stokes or use_tides or use_winds:
         active = []
         if use_stokes:
@@ -256,6 +257,13 @@ def run_simulation(
     fieldset = FieldSet.from_netcdf(
         filenames, variables, dimensions, allow_time_extrapolation=True
     )
+
+    if use_brownian:
+        fieldset.add_constant("Kh", float(cfg.brownian_kh))
+        console.print(
+            f"[cyan]·[/cyan] Brownian diffusion: Kh = {cfg.brownian_kh:.0f} m²/s "
+            f"(±{(2 * cfg.brownian_kh * 86400) ** 0.5 / 1000:.1f} km/day RMS spread)"
+        )
 
     # ── Seeding ──────────────────────────────────────────────────────────────
     lons = ds[lon_name].values
@@ -353,6 +361,8 @@ def run_simulation(
     kernels = [AdvectionRK4]
     if use_settling:
         kernels.append(Settling)
+    if use_brownian:
+        kernels.append(BrownianMotion2D)
     kernels.append(DeleteOOB)
 
     pset.execute(
