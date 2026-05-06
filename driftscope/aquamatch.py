@@ -227,6 +227,9 @@ def build_matchups(
     # Time-tolerant inner join: for each TSS row, find the closest scene at
     # the same siteSR_id within ±time_window_days. Use merge_asof which is
     # order-of-magnitude faster than per-row lookup for ~M-row tables.
+    # merge_asof requires identical datetime dtypes on both sides
+    tss["date"] = tss["date"].astype("datetime64[ns]")
+    rs["date"] = rs["date"].astype("datetime64[ns]")
     tss = tss.sort_values("date").reset_index(drop=True)
     rs = rs.sort_values("date").reset_index(drop=True)
     tol = pd.Timedelta(days=time_window_days)
