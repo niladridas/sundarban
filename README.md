@@ -105,11 +105,11 @@ The underlying CMEMS velocity field driving everything. Speed colormap with vect
 |---|---|---|---|---|
 | 1 | **Eulerian advection** | `u_currents` | CMEMS GLOBAL_ANALYSISFORECAST_PHY | ✅ shipped |
 | 2 | **Stokes drift** | `u_waves` | ERA5 (Hs, Tp, mwd) | ✅ shipped |
-| 3 | **Tides** | `u_tides` | TPXO9 / FES2014 (via pyTMD) | → next |
-| 4 | **Windage** | `u_wind × cd` | ERA5 (u10, v10) | planned |
-| 5 | **Settling** | `w_settle` | Stokes' law for SPM | planned |
+| 3 | **Tides** | `u_tides` | TPXO9-atlas-v5 (via pyTMD) | ✅ shipped |
+| 4 | **Windage** | `u_wind × cd` | ERA5 (u10, v10) | ✅ shipped |
+| 5 | **Settling** | `w_settle` | Stokes' law for SPM | ✅ shipped |
 | 6 | **GOFLOW currents** | `u_currents` ✱ | GOES SST → ML inversion | planned |
-| 7 | **NIR SPM tracer** | initial conditions | Sentinel-2 / Sentinel-3 OLCI | planned |
+| 7 | **NIR SPM tracer** | initial conditions | Sentinel-2 + CBR retrieval | scaffolded |
 | 8 | **SAR fronts** | validation overlay | Sentinel-1 IW | planned |
 
 ✱ Module 6 replaces the coarse CMEMS field with submesoscale-resolving currents. Same equation, ~10× spatial detail.

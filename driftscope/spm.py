@@ -101,26 +101,20 @@ def band_ratio_features(
 class CBRModel:
     """Fitted cluster-based regression model.
 
-    Attributes
-    ----------
-    centroids
-        Cluster centers in spectral-feature space, shape (k, n_features).
-        Used at predict time to compute per-pixel spectral distances.
-    coefs
-        Per-cluster regression coefficients, shape (k, n_features).
-    intercepts
-        Per-cluster regression intercepts, shape (k,).
-    log_target
-        Whether the model was fit on log(SPM) (recommended — SPM is
-        log-normally distributed) and predictions need exp() before return.
-    feature_eps
-        Floor used in band_ratio_features; stored so predict() uses the
-        same value as fit().
+    Two spaces matter, and they're different:
+      - Clustering space: raw band reflectances (n_bands). This is where
+        k-means runs and where spectral distances are computed at predict
+        time. Keeping it low-dimensional (~4-10 bands) keeps cluster
+        boundaries sharp and physically interpretable.
+      - Regression space: log + log-ratio features (n_features). Per-class
+        regressions live here. Higher-dimensional, but each cluster fits
+        a linear model in this space — physically grounded by Beer-Lambert
+        / SPM scattering relationships.
     """
 
-    centroids: np.ndarray
-    coefs: np.ndarray
-    intercepts: np.ndarray
+    centroids: np.ndarray   # (k, n_bands)  — clustering space
+    coefs: np.ndarray       # (k, n_features) — regression space
+    intercepts: np.ndarray  # (k,)
     log_target: bool = True
     feature_eps: float = 1e-6
 
@@ -132,6 +126,7 @@ def fit_cbr(
     log_target: bool = True,
     feature_eps: float = 1e-6,
     random_state: int = 0,
+    ridge_alpha: float = 0.1,
 ) -> CBRModel:
     """Fit a CBR model from in-situ SPM ↔ reflectance matchups.
 
@@ -153,13 +148,19 @@ def fit_cbr(
         Seed for k-means initialization. Make this fixed in production runs.
     """
     from sklearn.cluster import KMeans
-    from sklearn.linear_model import LinearRegression
+    from sklearn.linear_model import Ridge
 
+    # Cluster on raw bands (Geyman 2019, Section 2.2.3) — keeps cluster
+    # boundaries spectrally meaningful instead of in derived-feature space.
+    km = KMeans(n_clusters=k, random_state=random_state, n_init=10).fit(bands)
+    classes = km.predict(bands)
+
+    # Per-class regression in feature space. Ridge instead of plain LR:
+    # the per-cluster training set can be sparse (a few dozen samples for
+    # a 16-feature space), so ridge regularization prevents wildly large
+    # coefficients that would explode in exp() at predict time.
     X = band_ratio_features(bands, eps=feature_eps)
     y = np.log(np.clip(spm, feature_eps, None)) if log_target else spm
-
-    km = KMeans(n_clusters=k, random_state=random_state, n_init=10).fit(X)
-    classes = km.predict(X)
 
     n_features = X.shape[1]
     coefs = np.zeros((k, n_features), dtype=float)
@@ -171,7 +172,7 @@ def fit_cbr(
             # in practice if its centroid is far from real pixels.
             intercepts[c] = float(np.mean(y))
             continue
-        lr = LinearRegression().fit(X[mask], y[mask])
+        lr = Ridge(alpha=ridge_alpha).fit(X[mask], y[mask])
         coefs[c] = lr.coef_
         intercepts[c] = lr.intercept_
 
@@ -187,28 +188,47 @@ def fit_cbr(
 def predict_cbr(
     bands: np.ndarray,
     model: CBRModel,
+    blend: str = "hard",
     distance_eps: float = 1e-3,
 ) -> np.ndarray:
-    """Predict SPM at new pixels via spectral-distance-weighted blend of
-    per-class regressions.
+    """Predict SPM at new pixels.
 
-    The blending weight for class c at pixel p is:
-        w_pc = 1 / (||X_p - centroid_c||² + eps)
-    normalized so sum_c w_pc = 1. Following Geyman 2019, this gives smooth
-    transitions between classes rather than hard cluster boundaries — the
-    final estimate is *always* a weighted mix of all class models.
+    Two blending modes:
+
+    blend="hard" (default for SPM): assign each pixel to its nearest
+    cluster centroid in band space, then evaluate only that cluster's
+    regression. Robust when per-class SPM means differ by orders of
+    magnitude (clear vs turbid water).
+
+    blend="soft": weighted mean of all class predictions using inverse
+    spectral distance (Geyman 2019 form). Good when all classes predict
+    targets in similar ranges (their bathymetry case: all classes predict
+    depths in 0–3 m). For SPM, soft blending lets wrong-cluster regressions
+    contaminate predictions by their mean — a 15% weight on a turbid-water
+    model evaluated at a clear-water pixel can shift predictions by
+    hundreds of mg/L.
+
+    Distances are always computed in the clustering space (raw bands),
+    not in the higher-dimensional feature space.
     """
     X = band_ratio_features(bands, eps=model.feature_eps)
-    # Pairwise spectral distances pixel → centroid
-    diffs = X[:, None, :] - model.centroids[None, :, :]   # (n_pixels, k, n_feat)
-    dists = np.sum(diffs * diffs, axis=2)                  # (n_pixels, k)
-    weights = 1.0 / (dists + distance_eps)
-    weights /= weights.sum(axis=1, keepdims=True)
+    diffs = bands[:, None, :] - model.centroids[None, :, :]
+    dists = np.sqrt(np.sum(diffs * diffs, axis=2))             # (n_pixels, k) L2
 
-    per_class_pred = X @ model.coefs.T + model.intercepts[None, :]  # (n_pixels, k)
-    blended = (per_class_pred * weights).sum(axis=1)
+    per_class_pred = X @ model.coefs.T + model.intercepts[None, :]
 
-    return np.exp(blended) if model.log_target else blended
+    if blend == "hard":
+        cluster = np.argmin(dists, axis=1)
+        rows = np.arange(len(bands))
+        result = per_class_pred[rows, cluster]
+    elif blend == "soft":
+        weights = 1.0 / (dists + distance_eps)
+        weights /= weights.sum(axis=1, keepdims=True)
+        result = (per_class_pred * weights).sum(axis=1)
+    else:
+        raise ValueError(f"blend must be 'hard' or 'soft', got {blend!r}")
+
+    return np.exp(result) if model.log_target else result
 
 
 # ── Data pipeline stubs ──────────────────────────────────────────────────────
@@ -273,29 +293,35 @@ def synthetic_cbr_dataset(
     n_per_type: int = 200,
     rng: np.random.Generator | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Two-water-type synthetic SPM dataset for testing CBR.
+    """Two-water-type synthetic SPM dataset designed to expose CBR's advantage.
 
-    Type A: clear shelf water — SPM driven by red band, low concentrations.
-    Type B: turbid plume — SPM driven by NIR (red saturates), high concs.
-    Returns (bands [4-band], spm [mg/L], type_labels).
+    Type A — clear shelf water: SPM is well-characterized by visible bands;
+    NIR is barely above zero (Type-A water is too clear for NIR to track SPM).
+
+    Type B — turbid plume: red band SATURATES at high SPM (the Nechad-2010
+    well-known optics problem: water-leaving reflectance plateaus near 0.18
+    once SPM exceeds ~200 mg/L). NIR remains a good SPM proxy because it's
+    not yet saturating. This is the exact regime where Tian et al. 2026's
+    global RF model breaks down (>500 mg/L) and where a single global
+    log-linear regression cannot reconcile the two regimes.
     """
     rng = rng if rng is not None else np.random.default_rng(0)
 
     # Bands ordered: blue, green, red, NIR
-    # Type A — clear shelf
-    spm_a = np.exp(rng.normal(np.log(5), 0.6, n_per_type))         # 5 mg/L typical
+    # Type A — clear shelf, linear bands ~ SPM
+    spm_a = np.exp(rng.normal(np.log(5), 0.6, n_per_type))
     blue_a  = 0.04 + 0.0010 * spm_a + rng.normal(0, 0.003, n_per_type)
     green_a = 0.05 + 0.0020 * spm_a + rng.normal(0, 0.003, n_per_type)
     red_a   = 0.02 + 0.0040 * spm_a + rng.normal(0, 0.003, n_per_type)
-    nir_a   = 0.005 + 0.0008 * spm_a + rng.normal(0, 0.001, n_per_type)
+    nir_a   = 0.005 + 0.00010 * spm_a + rng.normal(0, 0.001, n_per_type)
     bands_a = np.stack([blue_a, green_a, red_a, nir_a], axis=1)
 
-    # Type B — turbid plume
-    spm_b = np.exp(rng.normal(np.log(150), 0.7, n_per_type))       # 150 mg/L typical
-    blue_b  = 0.06 + 0.00010 * spm_b + rng.normal(0, 0.005, n_per_type)
-    green_b = 0.10 + 0.00020 * spm_b + rng.normal(0, 0.005, n_per_type)
-    red_b   = 0.13 + 0.00010 * spm_b + rng.normal(0, 0.005, n_per_type)  # saturating
-    nir_b   = 0.02 + 0.00060 * spm_b + rng.normal(0, 0.003, n_per_type)
+    # Type B — turbid plume; red SATURATES at high SPM (tanh form), NIR linear
+    spm_b = np.exp(rng.normal(np.log(300), 0.6, n_per_type))
+    blue_b  = 0.06 + 0.040 * np.tanh(spm_b / 100) + rng.normal(0, 0.005, n_per_type)
+    green_b = 0.08 + 0.080 * np.tanh(spm_b / 100) + rng.normal(0, 0.005, n_per_type)
+    red_b   = 0.10 + 0.090 * np.tanh(spm_b / 80)  + rng.normal(0, 0.005, n_per_type)
+    nir_b   = 0.02 + 0.00060 * spm_b              + rng.normal(0, 0.003, n_per_type)
     bands_b = np.stack([blue_b, green_b, red_b, nir_b], axis=1)
 
     bands = np.vstack([bands_a, bands_b])
