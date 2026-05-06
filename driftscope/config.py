@@ -18,10 +18,11 @@ TIDES_DIR = DATA / "tides"
 DRIFTERS_DIR = DATA / "drifters"
 SST_DIR = DATA / "sst"
 CHL_DIR = DATA / "chlorophyll"
+SPM_DIR = DATA / "spm"
 TRAJ_DIR = DATA / "trajectories"
 
 for d in (CURRENTS_DIR, WAVES_DIR, WINDS_DIR, TIDES_DIR, DRIFTERS_DIR,
-          SST_DIR, CHL_DIR, TRAJ_DIR):
+          SST_DIR, CHL_DIR, SPM_DIR, TRAJ_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 

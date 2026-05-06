@@ -239,30 +239,160 @@ def predict_cbr(
 #     candidates: AquaSat, GRQA, HYDRO-WEB, project-specific samples)
 
 
+SENTINEL2_DEFAULT_BANDS = ("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A")
+S2_BAND_WAVELENGTHS_NM = {
+    "B02": 490, "B03": 560, "B04": 665, "B05": 705,
+    "B06": 740, "B07": 783, "B08": 842, "B8A": 865,
+}
+
+# Microsoft Planetary Computer and Element84 host the same Sentinel-2 L2A
+# data but use different asset key conventions. Map our canonical band IDs
+# to each catalog's asset names.
+S2_BAND_ALIASES = {
+    "B02": {"element84": "blue",     "pc": "B02"},
+    "B03": {"element84": "green",    "pc": "B03"},
+    "B04": {"element84": "red",      "pc": "B04"},
+    "B05": {"element84": "rededge1", "pc": "B05"},
+    "B06": {"element84": "rededge2", "pc": "B06"},
+    "B07": {"element84": "rededge3", "pc": "B07"},
+    "B08": {"element84": "nir",      "pc": "B08"},
+    "B8A": {"element84": "nir08",    "pc": "B8A"},
+}
+S2_CATALOG_URLS = {
+    "element84": "https://earth-search.aws.element84.com/v1/",
+    "pc": "https://planetarycomputer.microsoft.com/api/stac/v1",
+}
+
+
 def fetch_sentinel2_scene(
     bbox: tuple[float, float, float, float],
-    date: str,
-    out_dir: Path,
+    start_date: str,
+    end_date: str,
+    out_path: Path,
     cloud_max: float = 30.0,
+    bands: Sequence[str] = SENTINEL2_DEFAULT_BANDS,
+    resolution_m: int = 20,
+    catalog: str = "element84",
+    force: bool = False,
 ) -> Path:
-    """Fetch a single Sentinel-2 L2A (atmospherically corrected) scene.
+    """Fetch the least-cloudy Sentinel-2 L2A scene for bbox + date range.
 
-    NOT YET IMPLEMENTED. Recommended approach:
-      1. Use `planetary-computer` + `pystac-client` to query Microsoft's
-         STAC catalog at https://planetarycomputer.microsoft.com/.
-      2. Filter by cloud_cover < `cloud_max`.
-      3. Download bands B02 (490 nm), B03 (560 nm), B04 (665 nm),
-         B05 (705 nm), B06 (740 nm), B07 (783 nm), B08 (842 nm), B8A (865 nm).
-      4. Resample to a common 10 m or 20 m grid.
-      5. Save as a single NetCDF with band as a dimension, matching the
-         format of `data/currents/*.nc` for downstream consistency.
+    Saves a single NetCDF with band as a dimension, lat/lon coords (EPSG:4326),
+    and reflectance values in [0, 1] (Sentinel-2 L2A scaled by 1/10000).
+
+    Parameters
+    ----------
+    bbox
+        (lon_min, lat_min, lon_max, lat_max), EPSG:4326.
+    start_date, end_date
+        ISO date strings, e.g. '2024-03-15' / '2024-03-30'.
+    out_path
+        Output NetCDF path.
+    cloud_max
+        Max scene-level cloud cover percentage (0–100). 30 is permissive;
+        try 10 for the cleanest product, accepting fewer matches.
+    bands
+        Sentinel-2 band IDs. Default 8 visible+NIR bands.
+    resolution_m
+        Output resolution in meters; bands are upsampled/downsampled to match.
+        20 is the natural common grid (B05/B06/B07/B8A native, others 10m).
+    force
+        Re-download even if out_path exists.
     """
-    raise NotImplementedError(
-        "Sentinel-2 fetch not implemented. Most direct path:\n"
-        "  pip install planetary-computer pystac-client rioxarray\n"
-        "Then query stac-api.com Microsoft Planetary Computer catalog\n"
-        "for sentinel-2-l2a items intersecting bbox + date range."
+    if out_path.exists() and not force:
+        console.print(f"[green]✓[/green] cached: {out_path.name}")
+        return out_path
+
+    if catalog not in S2_CATALOG_URLS:
+        raise ValueError(
+            f"catalog must be one of {list(S2_CATALOG_URLS)}; got {catalog!r}"
+        )
+
+    import pystac_client
+    from odc.stac import load as odc_load
+
+    if catalog == "pc":
+        import planetary_computer as pc
+        client = pystac_client.Client.open(
+            S2_CATALOG_URLS["pc"], modifier=pc.sign_inplace
+        )
+    else:
+        client = pystac_client.Client.open(S2_CATALOG_URLS[catalog])
+
+    # Translate canonical band IDs to this catalog's asset names.
+    asset_names = [S2_BAND_ALIASES[b][catalog] for b in bands]
+
+    console.print(
+        f"[cyan]↓[/cyan] querying {catalog} for Sentinel-2 L2A "
+        f"bbox={bbox} dates={start_date}/{end_date} cloud<{cloud_max}%"
     )
+    search = client.search(
+        collections=["sentinel-2-l2a"],
+        bbox=list(bbox),
+        datetime=f"{start_date}/{end_date}",
+        query={"eo:cloud_cover": {"lt": cloud_max}},
+    )
+    items = list(search.items())
+    if not items:
+        raise RuntimeError(
+            f"No Sentinel-2 L2A scenes found in {bbox} for "
+            f"{start_date}/{end_date} with cloud_cover<{cloud_max}%. "
+            f"Try widening the date range or raising cloud_max."
+        )
+    items.sort(key=lambda i: i.properties["eo:cloud_cover"])
+    best = items[0]
+    best_date = best.datetime.date()
+    # Take all tiles from the same overpass day. Sentinel-2 splits the
+    # world into MGRS tiles; a single bbox often spans 2-4 of them, and
+    # odc-stac will mosaic them as long as we pass them all.
+    day_items = [i for i in items if i.datetime.date() == best_date]
+    avg_cc = sum(i.properties["eo:cloud_cover"] for i in day_items) / len(day_items)
+    console.print(
+        f"[cyan]·[/cyan] {len(items)} scenes match; using "
+        f"{len(day_items)} tile(s) from {best_date} "
+        f"(avg {avg_cc:.1f}% cloud)"
+    )
+
+    resolution_deg = resolution_m / 111_000.0
+    ds = odc_load(
+        day_items,
+        bands=asset_names,
+        bbox=list(bbox),
+        crs="EPSG:4326",
+        resolution=resolution_deg,
+        chunks={},
+    )
+    # Rename the asset-named variables back to canonical band IDs so the
+    # output NetCDF is catalog-agnostic.
+    rename_map = {S2_BAND_ALIASES[b][catalog]: b for b in bands}
+    ds = ds.rename(rename_map)
+    # ds has shape (time, y, x) per band. Drop time (single scene).
+    ds = ds.isel(time=0)
+
+    # Sentinel-2 L2A surface reflectance is stored as DN in [0, 10000].
+    # The masked nodata value (0) becomes NaN after reflectance scaling.
+    # odc-stac with crs="EPSG:4326" produces latitude/longitude coords natively.
+    refl = (ds.where(ds > 0).to_array(dim="band").astype("float32")) / 10000.0
+    refl.name = "reflectance"
+    refl.attrs.update({
+        "units": "1",
+        "long_name": "Surface reflectance, Sentinel-2 L2A",
+        "source": f"sentinel-2-l2a/{','.join(i.id for i in day_items)}",
+        "datetime": best.datetime.isoformat(),
+        "cloud_cover_pct": float(avg_cc),
+        "wavelengths_nm": ",".join(
+            f"{b}={S2_BAND_WAVELENGTHS_NM.get(b, '?')}" for b in bands
+        ),
+    })
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    refl.to_dataset().to_netcdf(out_path)
+    console.print(
+        f"[green]✓[/green] saved {out_path.name} "
+        f"({refl.sizes['latitude']}×{refl.sizes['longitude']}, "
+        f"{len(bands)} bands)"
+    )
+    return out_path
 
 
 def load_matchups_csv(path: Path, band_columns: Sequence[str],
@@ -337,14 +467,42 @@ def main() -> None:
     p.add_argument("--smoke-test", action="store_true",
                    help="Run synthetic-data validation of the CBR algorithm")
     p.add_argument("--k", type=int, default=4)
+    p.add_argument("--fetch", action="store_true",
+                   help="Fetch a Sentinel-2 L2A scene to test the pipeline")
+    p.add_argument("--bbox", type=str, default="88.5,21.3,89.5,22.0",
+                   help="lon_min,lat_min,lon_max,lat_max (default: Hooghly mouth)")
+    p.add_argument("--start", type=str, default="2024-03-01",
+                   help="ISO start date (default: 2024-03-01, dry season pre-monsoon)")
+    p.add_argument("--end", type=str, default="2024-03-31",
+                   help="ISO end date")
+    p.add_argument("--cloud-max", type=float, default=10.0,
+                   help="Max scene cloud cover %% (default 10)")
+    p.add_argument("--catalog", default="element84",
+                   choices=list(S2_CATALOG_URLS),
+                   help="STAC catalog: 'element84' (default, AWS Open Data, no auth) "
+                        "or 'pc' (Microsoft Planetary Computer, frequently slow)")
+    p.add_argument("--out", type=Path, default=None,
+                   help="Output NetCDF path (default: data/spm/<auto>.nc)")
     args = p.parse_args()
+
+    if args.fetch:
+        from .config import DATA
+        bbox = tuple(float(x) for x in args.bbox.split(","))
+        if len(bbox) != 4:
+            raise SystemExit("--bbox must be 'lon_min,lat_min,lon_max,lat_max'")
+        out = args.out or (DATA / "spm" /
+                           f"sentinel2_{args.start}_{args.end}.nc")
+        fetch_sentinel2_scene(bbox, args.start, args.end, out,
+                              cloud_max=args.cloud_max,
+                              catalog=args.catalog)
+        return
 
     if not args.smoke_test:
         console.print(
-            "[yellow]No action.[/yellow] Module 7 currently has the CBR core "
-            "and synthetic-data smoke test. Pass --smoke-test to verify the "
-            "algorithm. Real-data path requires Sentinel-2 fetch and in-situ "
-            "matchups (see module docstring)."
+            "[yellow]No action.[/yellow] Module 7 has:\n"
+            "  --smoke-test    validate CBR on synthetic data\n"
+            "  --fetch         download a Sentinel-2 L2A scene\n"
+            "Real-data CBR training still needs in-situ SPM matchups."
         )
         return
 

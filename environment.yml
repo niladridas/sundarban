@@ -22,7 +22,12 @@ dependencies:
   - scipy
   - scikit-learn
   - rich
+  - rioxarray
+  - rasterio
   - pip
   - pip:
       - streamlit-folium
       - folium
+      - planetary-computer
+      - pystac-client
+      - odc-stac

@@ -7,6 +7,7 @@ data/waves/*.nc
 data/winds/*.nc
 data/sst/*.nc
 data/chlorophyll/*.nc
+data/spm/*.nc
 data/papers/
 data/*.png
 *.code-workspace
