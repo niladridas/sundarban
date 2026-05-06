@@ -170,6 +170,8 @@ def run_simulation(
     stokes_nc: Path | None = None,
     tides_nc: Path | None = None,
     winds_nc: Path | None = None,
+    seed_lons: np.ndarray | None = None,
+    seed_lats: np.ndarray | None = None,
 ) -> Path:
     """Advect `cfg.n_particles` particles for `cfg.runtime_days` days.
 
@@ -177,6 +179,10 @@ def run_simulation(
       - cfg.include_stokes + stokes_nc → ERA5-derived surface Stokes drift
       - cfg.include_tides + tides_nc   → pyTMD barotropic tidal currents
       - cfg.include_winds + winds_nc   → ERA5 10m wind × cfg.windage_coeff
+
+    If `seed_lons`/`seed_lats` are provided (e.g. from an SPM-weighted sampler),
+    they bypass `cfg.seed_mode` and are used directly as the release pattern.
+    Land/NaN filtering is still applied.
 
     Returns the path to the trajectory file (Zarr).
     """
@@ -256,7 +262,11 @@ def run_simulation(
     lats = ds[lat_name].values
     rng = np.random.default_rng(seed)
 
-    if cfg.seed_mode == "bbox":
+    if seed_lons is not None and seed_lats is not None:
+        # Caller-supplied seeds — typically from an SPM-weighted sampler.
+        plon = np.asarray(seed_lons, dtype=float)
+        plat = np.asarray(seed_lats, dtype=float)
+    elif cfg.seed_mode == "bbox":
         # Basin fill: oversample uniformly across the data bbox; the land/NaN
         # filter below retains only ocean cells, giving a coastline-shaped spread.
         oversample = 5
@@ -287,7 +297,12 @@ def run_simulation(
         plon = plon[: cfg.n_particles]
         plat = plat[: cfg.n_particles]
 
-    if cfg.seed_mode == "bbox":
+    if seed_lons is not None and seed_lats is not None:
+        console.print(
+            f"[cyan]·[/cyan] caller-supplied seeds: {len(plon)} particles "
+            f"in ocean cells (after land mask)"
+        )
+    elif cfg.seed_mode == "bbox":
         console.print(
             f"[cyan]·[/cyan] basin-fill: seeded {len(plon)}/{cfg.n_particles} "
             f"ocean particles across bbox"
