@@ -160,7 +160,10 @@ ax.scatter(sim_df.lon.iloc[-1], sim_df.lat.iloc[-1], marker="X", s=80,
            facecolor="crimson", edgecolor="white", zorder=5, label=f"sim end (t={n_days}d)")
 ax.set_xlabel("Longitude (°E)")
 ax.set_ylabel("Latitude (°N)")
-ax.set_title(f"GDP drifter {drf.ID.iloc[0]} vs DriftScope (currents only)")
+ax.set_title(
+    f"GDP drifter {drf.ID.iloc[0]} vs DriftScope (currents only, CMEMS 1/12°)\n"
+    f"Sim misses a sharp southward feature ~day 7 — likely a sub-mesoscale eddy not resolved at 1/12°"
+)
 ax.legend(loc="best")
 ax.set_aspect("equal")
 ax.grid(alpha=0.3)
@@ -170,7 +173,11 @@ ax.plot(pf.t_days, pf.sep_km, "-", color="navy", lw=1.4, label="separation")
 ax.axhline(pf.sep_km.median(), color="red", ls=":", lw=1, label=f"median {pf.sep_km.median():.0f} km")
 ax.set_xlabel("Days since release")
 ax.set_ylabel("Separation (km)")
-ax.set_title(f"Sim ↔ drifter separation\nLiu-Weisberg skill = {lw_skill:.3f}")
+ax.set_title(
+    f"Sim ↔ drifter separation\n"
+    f"Liu-Weisberg skill = {lw_skill:.3f}  (median {pf.sep_km.median():.0f} km vs "
+    f"drifter path {cum_drifter_km[-1]:.0f} km)"
+)
 ax.legend(loc="best")
 ax.grid(alpha=0.3)
 
