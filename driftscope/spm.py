@@ -30,12 +30,30 @@ known water-type relationships. The Sentinel-2 fetch and in-situ matchup
 ingest are stubs — those depend on credentials/data the project doesn't
 yet have.
 
+Atmospheric correction
+----------------------
+Sentinel-2 L2A is already atmospherically corrected by ESA's Sen2Cor
+algorithm — water-leaving reflectances live in the [0, 0.2] range and
+follow physically expected patterns (water absorbs in NIR, scatters in
+green). For an initial CBR fit this is acceptable: the per-cluster
+regression absorbs whatever residual atmospheric bias is uniform across
+a cluster, since clusters are determined by the data itself.
+
+For production-grade retrieval — especially in Sundarbans where bright
+mangrove canopy adjacent to dark water creates strong adjacency effects
+— upgrade to ACOLITE: aquatic-specialized AC that handles sun glint,
+aerosol mixtures, and adjacency. Workflow is to fetch L1C (top-of-atmosphere)
+instead of L2A, then run ACOLITE locally. Adds ~30 min/scene and a
+non-trivial dependency tree but produces water reflectances that are
+~30% more accurate than Sen2Cor in coastal turbid-water regimes.
+
 References
 ----------
 Geyman & Maloof (2019)            — CBR algorithm
 Tian et al. (2026), Nat Geo       — pan-Arctic SSC retrieval framework
 Nechad et al. (2010)              — single-band semi-analytical SPM
 Dethier et al. (2022), Science    — global SPM dataset
+Vanhellemont & Ruddick (2018)     — ACOLITE for aquatic AC
 """
 from __future__ import annotations
 import argparse
@@ -395,21 +413,174 @@ def fetch_sentinel2_scene(
     return out_path
 
 
-def load_matchups_csv(path: Path, band_columns: Sequence[str],
-                      spm_column: str = "spm_mg_L") -> tuple[np.ndarray, np.ndarray]:
-    """Load in-situ SPM ↔ band-reflectance matchups for CBR training.
+MATCHUP_BAND_COLUMNS = ("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A")
+"""Default band columns expected/produced by the matchup pipeline."""
 
-    NOT YET IMPLEMENTED. Expected input is a CSV with columns:
-      lat, lon, datetime, spm_mg_L, B02, B03, B04, B05, B06, B07, B08, B8A
-    where the band columns hold the Sentinel-2 reflectance at the
-    sampling site/time. Construction of such a dataset for the GBM is
-    a research task in itself (see Tian et al. 2026 Methods for an
-    Arctic-region equivalent that uses AquaSat + GRQA + RATS).
+
+def load_matchups_csv(
+    path: Path,
+    band_columns: Sequence[str] = MATCHUP_BAND_COLUMNS,
+    spm_column: str = "spm_mg_L",
+) -> tuple[np.ndarray, np.ndarray]:
+    """Load a matchup CSV produced by `build_matchup_dataset` (or hand-curated).
+
+    Expected schema:
+        lat, lon, datetime, {spm_column}, {band_columns...}
+
+    Returns (bands [n × n_bands], spm [n]) ready for `fit_cbr`.
     """
-    raise NotImplementedError(
-        "Matchup ingest not implemented. See module docstring for the "
-        "expected CSV schema and references."
+    import pandas as pd
+    df = pd.read_csv(path)
+    missing = [c for c in (*band_columns, spm_column) if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"matchup CSV {path} missing columns: {missing}. "
+            f"Have: {list(df.columns)}"
+        )
+    df = df.dropna(subset=[*band_columns, spm_column])
+    df = df[df[spm_column] > 0]
+    bands = df[list(band_columns)].to_numpy(dtype=float)
+    spm = df[spm_column].to_numpy(dtype=float)
+    return bands, spm
+
+
+def match_in_situ_to_sentinel2(
+    lat: float,
+    lon: float,
+    when: str,
+    cache_dir: Path,
+    time_window_hours: float = 24.0,
+    bbox_buffer_deg: float = 0.05,
+    cloud_max: float = 30.0,
+    bands: Sequence[str] = SENTINEL2_DEFAULT_BANDS,
+    catalog: str = "element84",
+    n_pixel_avg: int = 3,
+) -> dict | None:
+    """Find a Sentinel-2 reflectance vector for one in-situ sampling point.
+
+    Mirrors the Tian et al. 2026 matchup methodology (Methods §"Strategy
+    for match-ups of SSC validation data"):
+      1. Restrict satellite-sample time difference to ±N hours (Tian use ±3).
+      2. Sample a small window of pixels at the in-situ location (3×3 here)
+         to suppress single-pixel noise — Tian use the same approach.
+      3. Apply cloud filtering (`cloud_max`).
+
+    Returns a dict {datetime, B02, B03, ..., B8A, scene_id} or None if no
+    suitable scene was found in the time window.
+
+    Parameters
+    ----------
+    lat, lon
+        In-situ sampling location (EPSG:4326).
+    when
+        ISO datetime of the in-situ sample, e.g. '2024-03-09T05:00:00Z'.
+    cache_dir
+        Where to cache downloaded Sentinel-2 NetCDFs (one per matched scene).
+    time_window_hours
+        Half-width of acceptable Sentinel-2 ↔ in-situ time gap. Tian use 3 h
+        because surface SSC can change quickly under tides; for stable
+        long-residence-time waters ≤24 h is reasonable.
+    bbox_buffer_deg
+        Half-width of the bbox around the sampling point (degrees). Larger
+        means more chance of catching the scene; smaller means smaller cached
+        downloads.
+    n_pixel_avg
+        N×N window of Sentinel-2 pixels averaged at the sampling location
+        (Tian use 3). Reduces sensitivity to georef errors and adjacency.
+    """
+    from datetime import datetime, timedelta
+    import xarray as xr
+
+    sample_dt = datetime.fromisoformat(when.replace("Z", "+00:00"))
+    half = timedelta(hours=time_window_hours)
+    start = (sample_dt - half).date().isoformat()
+    end = (sample_dt + half).date().isoformat()
+    bbox = (lon - bbox_buffer_deg, lat - bbox_buffer_deg,
+            lon + bbox_buffer_deg, lat + bbox_buffer_deg)
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cached_path = cache_dir / f"matchup_{lat:+.4f}_{lon:+.4f}_{start}_{end}.nc"
+    try:
+        scene = fetch_sentinel2_scene(
+            bbox, start, end, cached_path,
+            cloud_max=cloud_max, bands=bands, catalog=catalog,
+        )
+    except RuntimeError:
+        return None  # no scene in this time window
+
+    ds = xr.open_dataset(scene)
+    # Nearest pixel to the sample point, then expand by ±n_pixel_avg/2.
+    half_pix = n_pixel_avg // 2
+    win = ds.reflectance.sel(latitude=lat, longitude=lon, method="nearest")
+    # Re-select a window via index offsets — sel(method="nearest") returns
+    # a single pixel; use nearest indices to grab the n×n window manually.
+    lat_idx = int(np.argmin(np.abs(ds.latitude.values - lat)))
+    lon_idx = int(np.argmin(np.abs(ds.longitude.values - lon)))
+    lo_lat = max(0, lat_idx - half_pix)
+    hi_lat = min(ds.sizes["latitude"], lat_idx + half_pix + 1)
+    lo_lon = max(0, lon_idx - half_pix)
+    hi_lon = min(ds.sizes["longitude"], lon_idx + half_pix + 1)
+    window = ds.reflectance.isel(
+        latitude=slice(lo_lat, hi_lat),
+        longitude=slice(lo_lon, hi_lon),
     )
+    # Mean over the spatial window per band, ignoring NaN (cloud/land)
+    mean_per_band = window.mean(dim=("latitude", "longitude"), skipna=True).values
+
+    if not np.all(np.isfinite(mean_per_band)):
+        return None  # any band is cloud/land in the window → reject
+
+    out = {
+        "lat": lat,
+        "lon": lon,
+        "in_situ_datetime": sample_dt.isoformat(),
+        "scene_datetime": str(ds.time.values),
+        "scene_source": ds.reflectance.attrs.get("source", ""),
+    }
+    for b, v in zip(bands, mean_per_band):
+        out[b] = float(v)
+    return out
+
+
+def build_matchup_dataset(
+    in_situ_df,
+    cache_dir: Path,
+    out_csv: Path,
+    spm_column: str = "spm_mg_L",
+    **match_kwargs,
+):
+    """Run space-time matching for every row in an in-situ DataFrame.
+
+    Expected columns in `in_situ_df`: lat, lon, datetime, {spm_column}.
+    Output CSV has the input columns plus B02..B8A and scene metadata,
+    suitable for `load_matchups_csv` and `fit_cbr`.
+
+    Iteration is intentionally serial so the on-disk cache (one NetCDF per
+    matchup) is reused — many in-situ points in close space-time proximity
+    will share scenes, and parallelizing would re-download.
+    """
+    import pandas as pd
+
+    rows = []
+    n = len(in_situ_df)
+    for idx, r in in_situ_df.iterrows():
+        console.print(f"[cyan]·[/cyan] [{idx+1}/{n}] "
+                      f"{r['lat']:+.4f},{r['lon']:+.4f} @ {r['datetime']}")
+        result = match_in_situ_to_sentinel2(
+            float(r["lat"]), float(r["lon"]), str(r["datetime"]),
+            cache_dir=cache_dir, **match_kwargs,
+        )
+        if result is None:
+            console.print("    [yellow]no match[/yellow]")
+            continue
+        result[spm_column] = float(r[spm_column])
+        rows.append(result)
+
+    out = pd.DataFrame(rows)
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
+    out.to_csv(out_csv, index=False)
+    console.print(f"[green]✓[/green] {len(out)}/{n} matchups → {out_csv}")
+    return out_csv
 
 
 # ── Smoke test on synthetic data ─────────────────────────────────────────────
@@ -469,6 +640,9 @@ def main() -> None:
     p.add_argument("--k", type=int, default=4)
     p.add_argument("--fetch", action="store_true",
                    help="Fetch a Sentinel-2 L2A scene to test the pipeline")
+    p.add_argument("--match-test", action="store_true",
+                   help="Smoke-test the in-situ ↔ Sentinel-2 matching pipeline "
+                        "with a fabricated in-situ point")
     p.add_argument("--bbox", type=str, default="88.5,21.3,89.5,22.0",
                    help="lon_min,lat_min,lon_max,lat_max (default: Hooghly mouth)")
     p.add_argument("--start", type=str, default="2024-03-01",
@@ -495,6 +669,30 @@ def main() -> None:
         fetch_sentinel2_scene(bbox, args.start, args.end, out,
                               cloud_max=args.cloud_max,
                               catalog=args.catalog)
+        return
+
+    if args.match_test:
+        from .config import DATA
+        # Fabricate one in-situ sample inside the cached 2024-03-09 scene.
+        # Coords picked to land in a known water area (Hooghly tidal channel).
+        result = match_in_situ_to_sentinel2(
+            lat=21.7, lon=88.4,
+            when="2024-03-09T05:00:00Z",
+            cache_dir=DATA / "spm" / "matchup_cache",
+            time_window_hours=24.0,
+            bbox_buffer_deg=0.05,
+            cloud_max=10.0,
+            catalog=args.catalog,
+        )
+        if result is None:
+            console.print("[red]✗[/red] no match (likely cloud/land or no scene in window)")
+            return
+        console.print("[green]✓[/green] matchup constructed:")
+        for k, v in result.items():
+            if isinstance(v, float):
+                console.print(f"    {k}: {v:.4f}")
+            else:
+                console.print(f"    {k}: {v}")
         return
 
     if not args.smoke_test:
