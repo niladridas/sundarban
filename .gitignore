@@ -8,6 +8,9 @@ data/winds/*.nc
 data/sst/*.nc
 data/chlorophyll/*.nc
 data/spm/*.nc
+data/spm/*.csv
+data/spm/*.pkl
+data/spm/*.png
 data/papers/
 data/*.png
 *.code-workspace
