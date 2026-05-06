@@ -187,11 +187,14 @@ def run_simulation(
         JITParticle,
         AdvectionRK4,
         StatusCode,
+        Variable,
     )
+    from .kernels import Settling, stokes_settling_velocity
 
     use_stokes = cfg.include_stokes and stokes_nc is not None
     use_tides = cfg.include_tides and tides_nc is not None
     use_winds = cfg.include_winds and winds_nc is not None
+    use_settling = cfg.include_settling
     if use_stokes or use_tides or use_winds:
         active = []
         if use_stokes:
@@ -209,6 +212,23 @@ def run_simulation(
             stokes_scale=cfg.stokes_scale,
             windage_coeff=cfg.windage_coeff,
         )
+
+    # Settling lives in a kernel (per-particle vertical velocity, not a field).
+    if use_settling:
+        w_s = stokes_settling_velocity(
+            cfg.settling_diameter_um, cfg.settling_density_kg_m3
+        )
+        console.print(
+            f"[cyan]·[/cyan] settling: {cfg.settling_diameter_um:.1f}µm "
+            f"@ {cfg.settling_density_kg_m3:.0f} kg/m³ → "
+            f"w_s = {w_s*1000:.4f} mm/s ({w_s*86400:.2f} m/day)"
+        )
+
+        class SedimentParticle(JITParticle):
+            w_settle = Variable("w_settle", dtype=np.float32, initial=w_s)
+        ParticleClass = SedimentParticle
+    else:
+        ParticleClass = JITParticle
 
     console.print(f"[cyan]·[/cyan] loading currents: {currents_nc.name}")
     ds = xr.open_dataset(currents_nc)
@@ -287,7 +307,7 @@ def run_simulation(
 
     pset = ParticleSet(
         fieldset=fieldset,
-        pclass=JITParticle,
+        pclass=ParticleClass,
         lon=plon,
         lat=plat,
         time=ds.time.values[0],
@@ -296,6 +316,8 @@ def run_simulation(
     # ── Output ───────────────────────────────────────────────────────────────
     if out_path is None:
         stem = currents_nc.stem
+        if use_settling:
+            stem = f"{stem}__settle{cfg.settling_diameter_um:g}um"
         out_path = TRAJ_DIR / f"{stem}_traj.zarr"
 
     output = pset.ParticleFile(
@@ -313,8 +335,13 @@ def run_simulation(
         if particle.state == StatusCode.ErrorOutOfBounds:
             particle.delete()
 
+    kernels = [AdvectionRK4]
+    if use_settling:
+        kernels.append(Settling)
+    kernels.append(DeleteOOB)
+
     pset.execute(
-        [AdvectionRK4, DeleteOOB],
+        kernels,
         runtime=timedelta(days=cfg.runtime_days),
         dt=timedelta(minutes=cfg.dt_minutes),
         output_file=output,
@@ -346,6 +373,12 @@ def main() -> None:
                    help="ERA5 wind NetCDF (from `python -m driftscope.winds`)")
     p.add_argument("--windage", type=float, default=0.03,
                    help="windage coefficient (default 0.03 = 3%%)")
+    p.add_argument("--settle", action="store_true",
+                   help="enable Stokes settling (Module 5)")
+    p.add_argument("--settle-diameter-um", type=float, default=10.0,
+                   help="particle diameter in µm (default 10 = silt-class)")
+    p.add_argument("--settle-density", type=float, default=2650.0,
+                   help="particle density kg/m³ (default 2650 = quartz)")
     p.add_argument("--region", default=DEFAULT_REGION, choices=list(PRESETS.keys()),
                    help="if seed-lon/lat omitted, use this region's center")
     args = p.parse_args()
@@ -370,6 +403,9 @@ def main() -> None:
         include_tides=args.tides is not None,
         include_winds=args.winds is not None,
         windage_coeff=args.windage,
+        include_settling=args.settle,
+        settling_diameter_um=args.settle_diameter_um,
+        settling_density_kg_m3=args.settle_density,
     )
 
     run_simulation(

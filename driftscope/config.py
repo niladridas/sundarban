@@ -163,3 +163,8 @@ class SimConfig:
     # Fraction of 10m wind speed added to surface velocity. Typical values:
     #   0.01 (icebergs), 0.02 (people), 0.03 (plastic debris), 0.035 (oil slicks).
     windage_coeff: float = 0.03
+    include_settling: bool = False  # apply Stokes settling to particle depth
+    # Particle properties for Stokes' law. Defaults: 10 µm silt-class quartz —
+    # a representative grain size for the Bay of Bengal SPM size distribution.
+    settling_diameter_um: float = 10.0
+    settling_density_kg_m3: float = 2650.0  # silica/quartz; lower for organic SPM
