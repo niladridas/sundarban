@@ -135,7 +135,7 @@ DRIFTER_ERDDAP_URL = (
 # Barotropic tidal currents from a global ocean tide model. Required for
 # coastal/delta drift modeling (CMEMS forecast filters tides out).
 # Setup: download TPXO9-atlas-v5 (or FES2014) and set TIDE_MODEL_DIR in .env.
-TIDE_MODEL_NAME = "TPXO9-atlas-v5"
+TIDE_MODEL_NAME = "TPXO9-atlas-v5-nc"
 # Tide prediction time step (hours). 1h captures M2/S2 well; 3h is a tradeoff.
 TIDE_DT_HOURS = 1
 

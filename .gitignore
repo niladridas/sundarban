@@ -2,6 +2,14 @@
 data/currents/*.nc
 data/trajectories/*.zarr
 data/trajectories/*.nc
+data/tides/*.nc
+data/waves/*.nc
+data/winds/*.nc
+data/sst/*.nc
+data/chlorophyll/*.nc
+data/papers/
+data/*.png
+*.code-workspace
 __pycache__/
 *.pyc
 .ipynb_checkpoints/

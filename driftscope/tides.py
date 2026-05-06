@@ -83,12 +83,21 @@ def _hourly_times(start_date: str, end_date: str, dt_hours: int) -> np.ndarray:
 
 
 def _predict_grid(
-    model_dir: Path, lons: np.ndarray, lats: np.ndarray, times: np.ndarray
+    model_dir: Path,
+    lons: np.ndarray,
+    lats: np.ndarray,
+    times: np.ndarray,
+    bbox: tuple[float, float, float, float],
 ) -> tuple[np.ndarray, np.ndarray]:
     """Call pyTMD to predict u_tide, v_tide on (time, lat, lon) grid.
 
     Returns arrays shaped (len(times), len(lats), len(lons)) in m/s.
-    Uses pyTMD.compute.tide_currents — this is the v2.x high-level API.
+
+    pyTMD 3.x specifics:
+    - Single call returns an xarray.DataTree with both u and v variables
+    - bounds=[xmin,xmax,ymin,ymax] (NOT [lon_min,lat_min,lon_max,lat_max])
+    - Output units are cm/s; we convert to m/s
+    - crop=True is essential — without it, pyTMD loads ~7 GB of global grids
     """
     import pyTMD.compute  # lazy import — heavy startup
 
@@ -106,27 +115,29 @@ def _predict_grid(
     yy = np.tile(flat_y, n_times)
     tt = np.repeat(delta_t_seconds, n_points)
 
-    common = dict(
-        DIRECTORY=str(model_dir),
-        MODEL=TIDE_MODEL_NAME,
-        EPOCH=(2000, 1, 1, 0, 0, 0),
-        TYPE="drift",
-        TIME="UTC",
-        EPSG=4326,
-        METHOD="spline",
-        EXTRAPOLATE=False,
-        FILL_VALUE=0.0,
-    )
-    u_flat = pyTMD.compute.tide_currents(
-        x=xx, y=yy, delta_time=tt, COMPONENT="u", **common
-    )
-    v_flat = pyTMD.compute.tide_currents(
-        x=xx, y=yy, delta_time=tt, COMPONENT="v", **common
-    )
+    lon_min, lat_min, lon_max, lat_max = bbox
+    bounds = [lon_min, lon_max, lat_min, lat_max]
 
-    # NaN over land (no tide model coverage) → 0 so we don't poison combined currents
-    u_flat = np.nan_to_num(np.asarray(u_flat), nan=0.0)
-    v_flat = np.nan_to_num(np.asarray(v_flat), nan=0.0)
+    res = pyTMD.compute.tide_currents(
+        xx, yy, tt, component="u",
+        directory=str(model_dir),
+        model=TIDE_MODEL_NAME,
+        epoch=(2000, 1, 1, 0, 0, 0),
+        type="drift",
+        standard="UTC",
+        crs=4326,
+        method="linear",
+        extrapolate=False,
+        fill_value=np.nan,
+        crop=True,
+        bounds=bounds,
+        buffer=1.0,
+    )
+    ds = res.to_dataset() if hasattr(res, "to_dataset") else res
+    # pyTMD returns cm/s → convert to m/s. NaN over land → 0 to keep
+    # combined u_tide + u_currents from poisoning particle integration.
+    u_flat = np.nan_to_num(np.asarray(ds.u.values), nan=0.0) * 0.01
+    v_flat = np.nan_to_num(np.asarray(ds.v.values), nan=0.0) * 0.01
 
     u_grid = u_flat.reshape(n_times, len(lats), len(lons))
     v_grid = v_flat.reshape(n_times, len(lats), len(lons))
@@ -177,7 +188,7 @@ def fetch_tides(
         f"   model: {model_dir}"
     )
 
-    u_grid, v_grid = _predict_grid(model_dir, lons, lats, times)
+    u_grid, v_grid = _predict_grid(model_dir, lons, lats, times, bbox)
 
     ds = xr.Dataset(
         data_vars={
