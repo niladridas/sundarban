@@ -257,6 +257,17 @@ def predict_cbr(
 #     candidates: AquaSat, GRQA, HYDRO-WEB, project-specific samples)
 
 
+LANDSAT_DEFAULT_BANDS = ("blue", "green", "red", "nir08", "swir16", "swir22")
+"""Landsat C2 L2 surface-reflectance bands relevant for water retrieval.
+Wavelengths: blue=482nm, green=562nm, red=655nm, nir=865nm, swir1=1610nm,
+swir2=2200nm. Same names work as asset keys on Element84's `landsat-c2-l2`
+collection, so no aliasing needed."""
+
+# Landsat C2 L2 scaling — distinct from Sentinel-2's DN/10000:
+# physical reflectance = DN * 0.0000275 + (-0.2)
+LANDSAT_C2_L2_SCALE = 0.0000275
+LANDSAT_C2_L2_OFFSET = -0.2
+
 SENTINEL2_DEFAULT_BANDS = ("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A")
 S2_BAND_WAVELENGTHS_NM = {
     "B02": 490, "B03": 560, "B04": 665, "B05": 705,
@@ -415,6 +426,118 @@ def fetch_sentinel2_scene(
 
 MATCHUP_BAND_COLUMNS = ("B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A")
 """Default band columns expected/produced by the matchup pipeline."""
+
+
+def fetch_landsat_scene(
+    bbox: tuple[float, float, float, float],
+    start_date: str,
+    end_date: str,
+    out_path: Path,
+    cloud_max: float = 30.0,
+    bands: Sequence[str] = LANDSAT_DEFAULT_BANDS,
+    resolution_m: int = 30,
+    catalog: str = "pc",
+    force: bool = False,
+) -> Path:
+    """Fetch the least-cloudy Landsat Collection-2 Level-2 scene for bbox + date range.
+
+    Mirrors `fetch_sentinel2_scene` but for Landsat 8/9 surface reflectance.
+    Used to apply an AquaMatch-trained CBR model (which is calibrated against
+    Landsat reflectances) over a target region.
+
+    Note that Landsat C2 L2 stores DN with a different scaling than Sentinel-2:
+    reflectance = DN * 0.0000275 + (-0.2). This function applies the scaling
+    and outputs reflectance in [0, 1].
+
+    Native resolutions: 30 m for visible/NIR/SWIR. Default `resolution_m=30`
+    keeps native resolution; pass a larger value for downsampled output.
+
+    Default catalog is Microsoft Planetary Computer because Element84's
+    Landsat metadata points at AWS's requester-pays `usgs-landsat` bucket
+    (anonymous access denied). PC mirrors USGS Landsat C2 L2 for free
+    via SAS-token signed URLs.
+    """
+    if out_path.exists() and not force:
+        console.print(f"[green]✓[/green] cached: {out_path.name}")
+        return out_path
+
+    if catalog not in S2_CATALOG_URLS:
+        raise ValueError(
+            f"catalog must be one of {list(S2_CATALOG_URLS)}; got {catalog!r}"
+        )
+
+    import pystac_client
+    from odc.stac import load as odc_load
+
+    if catalog == "pc":
+        import planetary_computer as pc
+        client = pystac_client.Client.open(
+            S2_CATALOG_URLS["pc"], modifier=pc.sign_inplace
+        )
+    else:
+        client = pystac_client.Client.open(S2_CATALOG_URLS[catalog])
+
+    console.print(
+        f"[cyan]↓[/cyan] querying {catalog} for Landsat C2 L2 "
+        f"bbox={bbox} dates={start_date}/{end_date} cloud<{cloud_max}%"
+    )
+    search = client.search(
+        collections=["landsat-c2-l2"],
+        bbox=list(bbox),
+        datetime=f"{start_date}/{end_date}",
+        query={"eo:cloud_cover": {"lt": cloud_max}},
+    )
+    items = list(search.items())
+    if not items:
+        raise RuntimeError(
+            f"No Landsat C2 L2 scenes found in {bbox} for "
+            f"{start_date}/{end_date} with cloud_cover<{cloud_max}%."
+        )
+    items.sort(key=lambda i: i.properties["eo:cloud_cover"])
+    best = items[0]
+    best_date = best.datetime.date()
+    day_items = [i for i in items if i.datetime.date() == best_date]
+    avg_cc = sum(i.properties["eo:cloud_cover"] for i in day_items) / len(day_items)
+    platforms = sorted({i.properties.get("platform", "?") for i in day_items})
+    console.print(
+        f"[cyan]·[/cyan] {len(items)} scenes match; using "
+        f"{len(day_items)} tile(s) from {best_date} "
+        f"({','.join(platforms)}, avg {avg_cc:.1f}% cloud)"
+    )
+
+    resolution_deg = resolution_m / 111_000.0
+    ds = odc_load(
+        day_items,
+        bands=list(bands),
+        bbox=list(bbox),
+        crs="EPSG:4326",
+        resolution=resolution_deg,
+        chunks={},
+    )
+    ds = ds.isel(time=0)
+
+    # Apply Landsat scale + offset to convert DN → reflectance
+    refl = ds.where(ds > 0).to_array(dim="band").astype("float32")
+    refl = refl * LANDSAT_C2_L2_SCALE + LANDSAT_C2_L2_OFFSET
+    refl = refl.clip(0.0, 1.0)
+    refl.name = "reflectance"
+    refl.attrs.update({
+        "units": "1",
+        "long_name": "Surface reflectance, Landsat C2 L2",
+        "source": f"landsat-c2-l2/{','.join(i.id for i in day_items)}",
+        "datetime": best.datetime.isoformat(),
+        "cloud_cover_pct": float(avg_cc),
+        "platforms": ",".join(platforms),
+    })
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    refl.to_dataset().to_netcdf(out_path)
+    console.print(
+        f"[green]✓[/green] saved {out_path.name} "
+        f"({refl.sizes['latitude']}×{refl.sizes['longitude']}, "
+        f"{len(bands)} bands)"
+    )
+    return out_path
 
 
 def load_matchups_csv(
