@@ -20,3 +20,6 @@ __pycache__/
 .streamlit/
 .DS_Store
 *.egg-info/
+data/animations/*.mp4
+data/animations/*.gif
+data/animations/_*.png
