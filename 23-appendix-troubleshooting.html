@@ -1,0 +1,1285 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="A complete walk-through of how the Sundarbans / Bay of Bengal drift model works — physics, data, code — written for a student stepping into the project for the first time.">
+
+<title>Appendix B — Troubleshooting – DriftScope</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<link href="./22-appendix-glossary.html" rel="prev">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-d0ae9245876894da5ac7e18953ecc5cc.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-c48b64791268f294391a1bf62d55098d.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-dark-e2194d4f2b23090ce9666cb42b482573.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-c48b64791268f294391a1bf62d55098d.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "sidebar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "start",
+  "type": "textbox",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+
+
+</head>
+
+<body class="nav-sidebar docked quarto-light"><script id="quarto-html-before-body" type="application/javascript">
+    const toggleBodyColorMode = (bsSheetEl) => {
+      const mode = bsSheetEl.getAttribute("data-mode");
+      const bodyEl = window.document.querySelector("body");
+      if (mode === "dark") {
+        bodyEl.classList.add("quarto-dark");
+        bodyEl.classList.remove("quarto-light");
+      } else {
+        bodyEl.classList.add("quarto-light");
+        bodyEl.classList.remove("quarto-dark");
+      }
+    }
+    const toggleBodyColorPrimary = () => {
+      const bsSheetEl = window.document.querySelector("link#quarto-bootstrap:not([rel=disabled-stylesheet])");
+      if (bsSheetEl) {
+        toggleBodyColorMode(bsSheetEl);
+      }
+    }
+    const setColorSchemeToggle = (alternate) => {
+      const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+      for (let i=0; i < toggles.length; i++) {
+        const toggle = toggles[i];
+        if (toggle) {
+          if (alternate) {
+            toggle.classList.add("alternate");
+          } else {
+            toggle.classList.remove("alternate");
+          }
+        }
+      }
+    };
+    const toggleColorMode = (alternate) => {
+      // Switch the stylesheets
+      const primaryStylesheets = window.document.querySelectorAll('link.quarto-color-scheme:not(.quarto-color-alternate)');
+      const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+      manageTransitions('#quarto-margin-sidebar .nav-link', false);
+      if (alternate) {
+        // note: dark is layered on light, we don't disable primary!
+        enableStylesheet(alternateStylesheets);
+        for (const sheetNode of alternateStylesheets) {
+          if (sheetNode.id === "quarto-bootstrap") {
+            toggleBodyColorMode(sheetNode);
+          }
+        }
+      } else {
+        disableStylesheet(alternateStylesheets);
+        enableStylesheet(primaryStylesheets)
+        toggleBodyColorPrimary();
+      }
+      manageTransitions('#quarto-margin-sidebar .nav-link', true);
+      // Switch the toggles
+      setColorSchemeToggle(alternate)
+      // Hack to workaround the fact that safari doesn't
+      // properly recolor the scrollbar when toggling (#1455)
+      if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+        manageTransitions("body", false);
+        window.scrollTo(0, 1);
+        setTimeout(() => {
+          window.scrollTo(0, 0);
+          manageTransitions("body", true);
+        }, 40);
+      }
+    }
+    const disableStylesheet = (stylesheets) => {
+      for (let i=0; i < stylesheets.length; i++) {
+        const stylesheet = stylesheets[i];
+        stylesheet.rel = 'disabled-stylesheet';
+      }
+    }
+    const enableStylesheet = (stylesheets) => {
+      for (let i=0; i < stylesheets.length; i++) {
+        const stylesheet = stylesheets[i];
+        if(stylesheet.rel !== 'stylesheet') { // for Chrome, which will still FOUC without this check
+          stylesheet.rel = 'stylesheet';
+        }
+      }
+    }
+    const manageTransitions = (selector, allowTransitions) => {
+      const els = window.document.querySelectorAll(selector);
+      for (let i=0; i < els.length; i++) {
+        const el = els[i];
+        if (allowTransitions) {
+          el.classList.remove('notransition');
+        } else {
+          el.classList.add('notransition');
+        }
+      }
+    }
+    const isFileUrl = () => {
+      return window.location.protocol === 'file:';
+    }
+    const hasAlternateSentinel = () => {
+      let styleSentinel = getColorSchemeSentinel();
+      if (styleSentinel !== null) {
+        return styleSentinel === "alternate";
+      } else {
+        return false;
+      }
+    }
+    const setStyleSentinel = (alternate) => {
+      const value = alternate ? "alternate" : "default";
+      if (!isFileUrl()) {
+        window.localStorage.setItem("quarto-color-scheme", value);
+      } else {
+        localAlternateSentinel = value;
+      }
+    }
+    const getColorSchemeSentinel = () => {
+      if (!isFileUrl()) {
+        const storageValue = window.localStorage.getItem("quarto-color-scheme");
+        return storageValue != null ? storageValue : localAlternateSentinel;
+      } else {
+        return localAlternateSentinel;
+      }
+    }
+    const toggleGiscusIfUsed = (isAlternate, darkModeDefault) => {
+      const baseTheme = document.querySelector('#giscus-base-theme')?.value ?? 'light';
+      const alternateTheme = document.querySelector('#giscus-alt-theme')?.value ?? 'dark';
+      let newTheme = '';
+      if(authorPrefersDark) {
+        newTheme = isAlternate ? baseTheme : alternateTheme;
+      } else {
+        newTheme = isAlternate ? alternateTheme : baseTheme;
+      }
+      const changeGiscusTheme = () => {
+        // From: https://github.com/giscus/giscus/issues/336
+        const sendMessage = (message) => {
+          const iframe = document.querySelector('iframe.giscus-frame');
+          if (!iframe) return;
+          iframe.contentWindow.postMessage({ giscus: message }, 'https://giscus.app');
+        }
+        sendMessage({
+          setConfig: {
+            theme: newTheme
+          }
+        });
+      }
+      const isGiscussLoaded = window.document.querySelector('iframe.giscus-frame') !== null;
+      if (isGiscussLoaded) {
+        changeGiscusTheme();
+      }
+    };
+    const authorPrefersDark = false;
+    const darkModeDefault = authorPrefersDark;
+      document.querySelector('link#quarto-text-highlighting-styles.quarto-color-scheme-extra').rel = 'disabled-stylesheet';
+      document.querySelector('link#quarto-bootstrap.quarto-color-scheme-extra').rel = 'disabled-stylesheet';
+    let localAlternateSentinel = darkModeDefault ? 'alternate' : 'default';
+    // Dark / light mode switch
+    window.quartoToggleColorScheme = () => {
+      // Read the current dark / light value
+      let toAlternate = !hasAlternateSentinel();
+      toggleColorMode(toAlternate);
+      setStyleSentinel(toAlternate);
+      toggleGiscusIfUsed(toAlternate, darkModeDefault);
+      window.dispatchEvent(new Event('resize'));
+    };
+    // Switch to dark mode if need be
+    if (hasAlternateSentinel()) {
+      toggleColorMode(true);
+    } else {
+      toggleColorMode(false);
+    }
+  </script>
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./22-appendix-glossary.html">Appendices</a></li><li class="breadcrumb-item"><a href="./23-appendix-troubleshooting.html"><span class="chapter-number">B</span>&nbsp; <span class="chapter-title">Troubleshooting</span></a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation docked overflow-auto">
+    <div class="pt-lg-2 mt-2 text-left sidebar-header">
+    <div class="sidebar-title mb-0 py-0">
+      <a href="./">DriftScope</a> 
+        <div class="sidebar-tools-main">
+    <a href="https://github.com/example/sundarban" title="Source Code" class="quarto-navigation-tool px-1" aria-label="Source Code"><i class="bi bi-github"></i></a>
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+    </div>
+      </div>
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">1</span>&nbsp; <span class="chapter-title">DriftScope</span></span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="false">
+ <span class="menu-text">Getting started</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./01-setup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">2</span>&nbsp; <span class="chapter-title">Setup</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./02-quickstart.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">3</span>&nbsp; <span class="chapter-title">Quickstart</span></span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="false">
+ <span class="menu-text">Physics</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./03-physics-lagrangian.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">4</span>&nbsp; <span class="chapter-title">The Lagrangian frame</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./04-physics-advection.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">5</span>&nbsp; <span class="chapter-title">Advection and RK4</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./05-physics-coriolis.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">6</span>&nbsp; <span class="chapter-title">Coriolis and the inertial period</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./06-physics-forcings.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">7</span>&nbsp; <span class="chapter-title">Stokes drift, tides, and windage</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./07-physics-settling.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">8</span>&nbsp; <span class="chapter-title">Settling — Stokes’ law for SPM</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./08-physics-diffusion.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">9</span>&nbsp; <span class="chapter-title">Sub-grid diffusion — Brownian motion</span></span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="false">
+ <span class="menu-text">Data</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./09-data-currents.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">10</span>&nbsp; <span class="chapter-title">Currents — CMEMS and HYCOM</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./10-data-waves-winds.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">11</span>&nbsp; <span class="chapter-title">Waves and winds — ERA5</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./11-data-tides.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">12</span>&nbsp; <span class="chapter-title">Tides — TPXO9 via pyTMD</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./12-data-observations.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">13</span>&nbsp; <span class="chapter-title">Observations — SST, chlorophyll, drifters</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./13-data-spm.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">14</span>&nbsp; <span class="chapter-title">SPM — Sentinel-2 + cluster-based regression</span></span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="false">
+ <span class="menu-text">Modules</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth1 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./14-modules.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">15</span>&nbsp; <span class="chapter-title">Module reference</span></span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" role="navigation" aria-expanded="false">
+ <span class="menu-text">Tutorials</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" role="navigation" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-5" class="collapse list-unstyled sidebar-section depth1 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./15-tutorial-first-sim.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">16</span>&nbsp; <span class="chapter-title">Tutorial 1 — Your first simulation</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./16-tutorial-coupled.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">17</span>&nbsp; <span class="chapter-title">Tutorial 2 — All forcings together</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./17-tutorial-validation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">18</span>&nbsp; <span class="chapter-title">Tutorial 3 — Drifter validation</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./18-tutorial-dynamics.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">19</span>&nbsp; <span class="chapter-title">Tutorial 4 — The dynamics snapshot</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./19-tutorial-seasonal.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">20</span>&nbsp; <span class="chapter-title">Tutorial 5 — Seasonal dispersion</span></span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="false">
+ <span class="menu-text">Extending the project</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-6" class="collapse list-unstyled sidebar-section depth1 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./20-extending-region.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">21</span>&nbsp; <span class="chapter-title">Adding a new region</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./21-extending-forcing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">22</span>&nbsp; <span class="chapter-title">Adding a new forcing</span></span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-7" role="navigation" aria-expanded="true">
+ <span class="menu-text">Appendices</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-7" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-7" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./22-appendix-glossary.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">A</span>&nbsp; <span class="chapter-title">Glossary</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./23-appendix-troubleshooting.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text"><span class="chapter-number">B</span>&nbsp; <span class="chapter-title">Troubleshooting</span></span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active" data-toc-expanded="99">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#troubleshooting" id="toc-troubleshooting" class="nav-link active" data-scroll-target="#troubleshooting">Troubleshooting</a>
+  <ul class="collapse">
+  <li><a href="#setup" id="toc-setup" class="nav-link" data-scroll-target="#setup"><span class="header-section-number">B.1</span> Setup</a>
+  <ul class="collapse">
+  <li><a href="#conda-env-create-errors-out-on-parcels" id="toc-conda-env-create-errors-out-on-parcels" class="nav-link" data-scroll-target="#conda-env-create-errors-out-on-parcels"><span class="header-section-number">B.1.1</span> <code>conda env create</code> errors out on <code>parcels</code></a></li>
+  <li><a href="#cartopy-import-error-about-geos-or-proj" id="toc-cartopy-import-error-about-geos-or-proj" class="nav-link" data-scroll-target="#cartopy-import-error-about-geos-or-proj"><span class="header-section-number">B.1.2</span> <code>cartopy</code> import error about GEOS or PROJ</a></li>
+  <li><a href="#python--m-driftscope.fetch-opens-a-browser-asking-for-login" id="toc-python--m-driftscope.fetch-opens-a-browser-asking-for-login" class="nav-link" data-scroll-target="#python--m-driftscope.fetch-opens-a-browser-asking-for-login"><span class="header-section-number">B.1.3</span> <code>python -m driftscope.fetch</code> opens a browser asking for login</a></li>
+  </ul></li>
+  <li><a href="#data-fetch" id="toc-data-fetch" class="nav-link" data-scroll-target="#data-fetch"><span class="header-section-number">B.2</span> Data fetch</a>
+  <ul class="collapse">
+  <li><a href="#cds-request-hangs-forever" id="toc-cds-request-hangs-forever" class="nav-link" data-scroll-target="#cds-request-hangs-forever"><span class="header-section-number">B.2.1</span> CDS request hangs forever</a></li>
+  <li><a href="#hycom-fetch-fails-with-http-503-404" id="toc-hycom-fetch-fails-with-http-503-404" class="nav-link" data-scroll-target="#hycom-fetch-fails-with-http-503-404"><span class="header-section-number">B.2.2</span> HYCOM fetch fails with HTTP 503 / 404</a></li>
+  <li><a href="#drifter-fetch-returns-empty-csv" id="toc-drifter-fetch-returns-empty-csv" class="nav-link" data-scroll-target="#drifter-fetch-returns-empty-csv"><span class="header-section-number">B.2.3</span> Drifter fetch returns empty CSV</a></li>
+  <li><a href="#tpxo-tide-fetch-errors-with-tide_model_dir-not-set" id="toc-tpxo-tide-fetch-errors-with-tide_model_dir-not-set" class="nav-link" data-scroll-target="#tpxo-tide-fetch-errors-with-tide_model_dir-not-set"><span class="header-section-number">B.2.4</span> TPXO tide fetch errors with “TIDE_MODEL_DIR not set”</a></li>
+  <li><a href="#pytmd-errors-about-model-not-found" id="toc-pytmd-errors-about-model-not-found" class="nav-link" data-scroll-target="#pytmd-errors-about-model-not-found"><span class="header-section-number">B.2.5</span> pyTMD errors about “model not found”</a></li>
+  </ul></li>
+  <li><a href="#simulation" id="toc-simulation" class="nav-link" data-scroll-target="#simulation"><span class="header-section-number">B.3</span> Simulation</a>
+  <ul class="collapse">
+  <li><a href="#all-seed-points-landed-on-landnan" id="toc-all-seed-points-landed-on-landnan" class="nav-link" data-scroll-target="#all-seed-points-landed-on-landnan"><span class="header-section-number">B.3.1</span> “All seed points landed on land/NaN”</a></li>
+  <li><a href="#particles-all-delete-by-day-3" id="toc-particles-all-delete-by-day-3" class="nav-link" data-scroll-target="#particles-all-delete-by-day-3"><span class="header-section-number">B.3.2</span> Particles all delete by day 3</a></li>
+  <li><a href="#simulation-is-suspiciously-fast" id="toc-simulation-is-suspiciously-fast" class="nav-link" data-scroll-target="#simulation-is-suspiciously-fast"><span class="header-section-number">B.3.3</span> Simulation is suspiciously fast</a></li>
+  <li><a href="#parcels-prints-whereout-warning" id="toc-parcels-prints-whereout-warning" class="nav-link" data-scroll-target="#parcels-prints-whereout-warning"><span class="header-section-number">B.3.4</span> parcels prints <code>where='out'</code> warning</a></li>
+  </ul></li>
+  <li><a href="#plotting" id="toc-plotting" class="nav-link" data-scroll-target="#plotting"><span class="header-section-number">B.4</span> Plotting</a>
+  <ul class="collapse">
+  <li><a href="#trajectory-plot-looks-like-a-single-line" id="toc-trajectory-plot-looks-like-a-single-line" class="nav-link" data-scroll-target="#trajectory-plot-looks-like-a-single-line"><span class="header-section-number">B.4.1</span> Trajectory plot looks like a single line</a></li>
+  <li><a href="#map-shows-particles-in-wrong-hemisphere" id="toc-map-shows-particles-in-wrong-hemisphere" class="nav-link" data-scroll-target="#map-shows-particles-in-wrong-hemisphere"><span class="header-section-number">B.4.2</span> Map shows particles in wrong hemisphere</a></li>
+  <li><a href="#sst-plot-shows-300-k-colorbar" id="toc-sst-plot-shows-300-k-colorbar" class="nav-link" data-scroll-target="#sst-plot-shows-300-k-colorbar"><span class="header-section-number">B.4.3</span> SST plot shows “300 K” colorbar</a></li>
+  </ul></li>
+  <li><a href="#quarto-book" id="toc-quarto-book" class="nav-link" data-scroll-target="#quarto-book"><span class="header-section-number">B.5</span> Quarto book</a>
+  <ul class="collapse">
+  <li><a href="#quarto-render-fails-with-command-not-found" id="toc-quarto-render-fails-with-command-not-found" class="nav-link" data-scroll-target="#quarto-render-fails-with-command-not-found"><span class="header-section-number">B.5.1</span> <code>quarto render</code> fails with “command not found”</a></li>
+  <li><a href="#code-chunks-fail-to-execute-on-render" id="toc-code-chunks-fail-to-execute-on-render" class="nav-link" data-scroll-target="#code-chunks-fail-to-execute-on-render"><span class="header-section-number">B.5.2</span> Code chunks fail to execute on render</a></li>
+  <li><a href="#math-symbols-render-as-raw-dots" id="toc-math-symbols-render-as-raw-dots" class="nav-link" data-scroll-target="#math-symbols-render-as-raw-dots"><span class="header-section-number">B.5.3</span> Math symbols render as raw <code>\dots</code></a></li>
+  </ul></li>
+  <li><a href="#performance" id="toc-performance" class="nav-link" data-scroll-target="#performance"><span class="header-section-number">B.6</span> Performance</a>
+  <ul class="collapse">
+  <li><a href="#simulation-runs-out-of-memory" id="toc-simulation-runs-out-of-memory" class="nav-link" data-scroll-target="#simulation-runs-out-of-memory"><span class="header-section-number">B.6.1</span> Simulation runs out of memory</a></li>
+  <li><a href="#plots-take-forever-to-render" id="toc-plots-take-forever-to-render" class="nav-link" data-scroll-target="#plots-take-forever-to-render"><span class="header-section-number">B.6.2</span> Plots take forever to render</a></li>
+  </ul></li>
+  <li><a href="#when-in-doubt" id="toc-when-in-doubt" class="nav-link" data-scroll-target="#when-in-doubt"><span class="header-section-number">B.7</span> When in doubt</a></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/example/sundarban/edit/main/23-appendix-troubleshooting.qmd" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li><li><a href="https://github.com/example/sundarban/blob/main/23-appendix-troubleshooting.qmd" class="toc-action"><i class="bi empty"></i>View source</a></li><li><a href="https://github.com/example/sundarban/issues/new" class="toc-action"><i class="bi empty"></i>Report an issue</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./22-appendix-glossary.html">Appendices</a></li><li class="breadcrumb-item"><a href="./23-appendix-troubleshooting.html"><span class="chapter-number">B</span>&nbsp; <span class="chapter-title">Troubleshooting</span></a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">Appendix B — Troubleshooting</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="troubleshooting" class="level1 unnumbered">
+<h1 class="unnumbered">Troubleshooting</h1>
+<p>A field guide to the failure modes a new student is likely to hit. Organized by <em>symptom</em>; each entry has the <em>root cause</em> and the <em>fix</em>.</p>
+<section id="setup" class="level2" data-number="B.1">
+<h2 data-number="B.1" class="anchored" data-anchor-id="setup"><span class="header-section-number">B.1</span> Setup</h2>
+<section id="conda-env-create-errors-out-on-parcels" class="level3" data-number="B.1.1">
+<h3 data-number="B.1.1" class="anchored" data-anchor-id="conda-env-create-errors-out-on-parcels"><span class="header-section-number">B.1.1</span> <code>conda env create</code> errors out on <code>parcels</code></h3>
+<p><strong>Symptom</strong>: <code>ResolvePackageNotFound: parcels=3.x</code> or compiler errors during the build of <code>parcels</code>.</p>
+<p><strong>Root cause</strong>: parcels has C extensions that need a working compiler. On macOS, this means Xcode CLI tools; on Linux, gcc.</p>
+<p><strong>Fix</strong>: install build tools. On macOS: <code>xcode-select --install</code>. On Ubuntu: <code>sudo apt-get install build-essential</code>. Then retry <code>conda env create -f environment.yml</code>.</p>
+<p>If still failing, try mamba (<code>conda install -n base mamba; mamba env create -f environment.yml</code>) — mamba’s solver is faster and more reliable.</p>
+</section>
+<section id="cartopy-import-error-about-geos-or-proj" class="level3" data-number="B.1.2">
+<h3 data-number="B.1.2" class="anchored" data-anchor-id="cartopy-import-error-about-geos-or-proj"><span class="header-section-number">B.1.2</span> <code>cartopy</code> import error about GEOS or PROJ</h3>
+<p><strong>Symptom</strong>: <code>OSError: Could not find/load shared object file: libgeos_c.so.1</code></p>
+<p><strong>Root cause</strong>: cartopy’s binary doesn’t match the conda-installed geos/proj versions.</p>
+<p><strong>Fix</strong>:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">conda</span> update <span class="at">-n</span> driftscope cartopy proj geos</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Or, more aggressive: <code>conda remove cartopy &amp;&amp; conda install -c conda-forge cartopy</code>.</p>
+</section>
+<section id="python--m-driftscope.fetch-opens-a-browser-asking-for-login" class="level3" data-number="B.1.3">
+<h3 data-number="B.1.3" class="anchored" data-anchor-id="python--m-driftscope.fetch-opens-a-browser-asking-for-login"><span class="header-section-number">B.1.3</span> <code>python -m driftscope.fetch</code> opens a browser asking for login</h3>
+<p><strong>Symptom</strong>: <code>copernicusmarine.subset()</code> halts and tries to open a browser window for OAuth login.</p>
+<p><strong>Root cause</strong>: <code>COPERNICUSMARINE_USERNAME</code> / <code>_PASSWORD</code> not in env.</p>
+<p><strong>Fix</strong>: edit <code>.env</code>, fill in your credentials. Run from the repo root so <code>load_dotenv()</code> finds it. Sanity check:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> <span class="at">-c</span> <span class="st">"import os; print(os.environ.get('COPERNICUSMARINE_USERNAME'))"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="data-fetch" class="level2" data-number="B.2">
+<h2 data-number="B.2" class="anchored" data-anchor-id="data-fetch"><span class="header-section-number">B.2</span> Data fetch</h2>
+<section id="cds-request-hangs-forever" class="level3" data-number="B.2.1">
+<h3 data-number="B.2.1" class="anchored" data-anchor-id="cds-request-hangs-forever"><span class="header-section-number">B.2.1</span> CDS request hangs forever</h3>
+<p><strong>Symptom</strong>: <code>cds.retrieve(...)</code> for ERA5 sits at “Queued” or “Running” for &gt;5 minutes.</p>
+<p><strong>Root cause</strong>: Big requests on busy days take a while. Most BoB requests finish in 30–90 seconds.</p>
+<p><strong>Fix</strong>: be patient. If you’re really stuck, log into <a href="https://cds.climate.copernicus.eu">cds.climate.copernicus.eu</a> and check your queue — sometimes the API key is rate-limited and the request didn’t even submit.</p>
+</section>
+<section id="hycom-fetch-fails-with-http-503-404" class="level3" data-number="B.2.2">
+<h3 data-number="B.2.2" class="anchored" data-anchor-id="hycom-fetch-fails-with-http-503-404"><span class="header-section-number">B.2.2</span> HYCOM fetch fails with HTTP 503 / 404</h3>
+<p><strong>Symptom</strong>: <code>HTTPError: 503 Service Unavailable</code> from <code>tds.hycom.org</code>.</p>
+<p><strong>Root cause</strong>: The HYCOM THREDDS server has weekly maintenance windows (typically Thursdays 18:00 UTC) when OPeNDAP requests fail.</p>
+<p><strong>Fix</strong>: wait a few hours and retry. If persistent, switch to CMEMS for the day’s work — the rest of the pipeline is unchanged.</p>
+</section>
+<section id="drifter-fetch-returns-empty-csv" class="level3" data-number="B.2.3">
+<h3 data-number="B.2.3" class="anchored" data-anchor-id="drifter-fetch-returns-empty-csv"><span class="header-section-number">B.2.3</span> Drifter fetch returns empty CSV</h3>
+<p><strong>Symptom</strong>: <code>data/drifters/&lt;region&gt;_&lt;dates&gt;_drifters.csv</code> has 4 lines (header + units + 0 rows).</p>
+<p><strong>Root cause</strong>: No GDP drifter active in the bbox/time. This is <em>normal</em> — drifters are sparse.</p>
+<p><strong>Fix</strong>: widen the bbox or shift the dates. The eastern BoB has the densest drifter coverage in the region; try <code>(85, 8, 95, 16)</code> for 2025-04 onward.</p>
+</section>
+<section id="tpxo-tide-fetch-errors-with-tide_model_dir-not-set" class="level3" data-number="B.2.4">
+<h3 data-number="B.2.4" class="anchored" data-anchor-id="tpxo-tide-fetch-errors-with-tide_model_dir-not-set"><span class="header-section-number">B.2.4</span> TPXO tide fetch errors with “TIDE_MODEL_DIR not set”</h3>
+<p><strong>Symptom</strong>: <code>RuntimeError: TIDE_MODEL_DIR not set in .env.</code></p>
+<p><strong>Root cause</strong>: Tides require a manual one-time setup (TPXO download).</p>
+<p><strong>Fix</strong>: register at <a href="https://www.tpxo.net">tpxo.net</a>, download TPXO9-atlas-v5 NetCDF, set <code>TIDE_MODEL_DIR</code> in <code>.env</code> to the unpacked directory. See <a href="01-setup.html" class="quarto-xref">Chapter&nbsp;<span>3</span></a>.</p>
+</section>
+<section id="pytmd-errors-about-model-not-found" class="level3" data-number="B.2.5">
+<h3 data-number="B.2.5" class="anchored" data-anchor-id="pytmd-errors-about-model-not-found"><span class="header-section-number">B.2.5</span> pyTMD errors about “model not found”</h3>
+<p><strong>Symptom</strong>: <code>pyTMD.compute.tide_currents()</code> raises <code>FileNotFoundError: Model_TPXO9-atlas-v5_nc not found</code>.</p>
+<p><strong>Root cause</strong>: One of the seven pyTMD 3.x quirks (<a href="11-data-tides.html" class="quarto-xref">Chapter&nbsp;<span>13</span></a>). Most likely: <code>TIDE_MODEL_DIR</code> points at the <em>model directory</em> itself, but pyTMD wants its parent.</p>
+<p><strong>Fix</strong>: if your model is at <code>~/data/tpxo/TPXO9_atlas_v5/Model_h_M2_v5_nc</code>, set <code>TIDE_MODEL_DIR=~/data/tpxo/</code>. pyTMD discovers the model from there.</p>
+</section>
+</section>
+<section id="simulation" class="level2" data-number="B.3">
+<h2 data-number="B.3" class="anchored" data-anchor-id="simulation"><span class="header-section-number">B.3</span> Simulation</h2>
+<section id="all-seed-points-landed-on-landnan" class="level3" data-number="B.3.1">
+<h3 data-number="B.3.1" class="anchored" data-anchor-id="all-seed-points-landed-on-landnan"><span class="header-section-number">B.3.1</span> “All seed points landed on land/NaN”</h3>
+<p><strong>Symptom</strong>: <code>RuntimeError: All seed points landed on land/NaN.</code></p>
+<p><strong>Root cause</strong>: Your seed disk is too close to or on top of land (very common in delta regions).</p>
+<p><strong>Fix</strong>: move the seed offshore. For Sundarbans:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> <span class="at">-m</span> driftscope.simulate <span class="dt">\</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--seed-lon</span> 89.0 <span class="at">--seed-lat</span> 20.8 <span class="at">--seed-radius</span> 0.3</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>…or use <code>--seed-mode bbox</code> to fill the entire ocean portion of the bbox uniformly.</p>
+</section>
+<section id="particles-all-delete-by-day-3" class="level3" data-number="B.3.2">
+<h3 data-number="B.3.2" class="anchored" data-anchor-id="particles-all-delete-by-day-3"><span class="header-section-number">B.3.2</span> Particles all delete by day 3</h3>
+<p><strong>Symptom</strong>: 500 particles seeded, 50 alive at day 3, 0 alive at day 10.</p>
+<p><strong>Root cause</strong>: The bbox is too small. Particles drift out of the domain and <code>DeleteOOB</code> removes them.</p>
+<p><strong>Fix</strong>: refetch with a wider bbox (~1.5× the typical drift distance: peak speed × runtime).</p>
+</section>
+<section id="simulation-is-suspiciously-fast" class="level3" data-number="B.3.3">
+<h3 data-number="B.3.3" class="anchored" data-anchor-id="simulation-is-suspiciously-fast"><span class="header-section-number">B.3.3</span> Simulation is suspiciously fast</h3>
+<p><strong>Symptom</strong>: <code>pset.execute()</code> takes &lt;1 second; trajectory file has 0 particles.</p>
+<p><strong>Root cause</strong>: All seed points landed on land in a way that <code>run_simulation()</code> didn’t catch (rare, but possible if the currents file’s land mask differs from our heuristic).</p>
+<p><strong>Fix</strong>: open the currents file and inspect:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>ds <span class="op">=</span> xr.open_dataset(<span class="st">"..."</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(ds.uo.isel(time<span class="op">=</span><span class="dv">0</span>).count())  <span class="co"># should be &gt; 0</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>If 0, your bbox is entirely land — fix the bbox.</p>
+</section>
+<section id="parcels-prints-whereout-warning" class="level3" data-number="B.3.4">
+<h3 data-number="B.3.4" class="anchored" data-anchor-id="parcels-prints-whereout-warning"><span class="header-section-number">B.3.4</span> parcels prints <code>where='out'</code> warning</h3>
+<p><strong>Symptom</strong>: pages of <code>UserWarning: 'where' used without 'out'</code> from parcels’ particledata.py.</p>
+<p><strong>Root cause</strong>: parcels v3 + numpy 2.x deprecation. Library bug, not yours.</p>
+<p><strong>Fix</strong>: already filtered in <code>simulate.py:19</code>. If you see it, the filter was edited or numpy was bumped — update parcels (<code>conda update parcels</code>) or restore the filter.</p>
+</section>
+</section>
+<section id="plotting" class="level2" data-number="B.4">
+<h2 data-number="B.4" class="anchored" data-anchor-id="plotting"><span class="header-section-number">B.4</span> Plotting</h2>
+<section id="trajectory-plot-looks-like-a-single-line" class="level3" data-number="B.4.1">
+<h3 data-number="B.4.1" class="anchored" data-anchor-id="trajectory-plot-looks-like-a-single-line"><span class="header-section-number">B.4.1</span> Trajectory plot looks like a single line</h3>
+<p><strong>Symptom</strong>: Plot shows what looks like one trajectory with 81 points, not 500 trajectories.</p>
+<p><strong>Root cause</strong>: Loading the wrong file, or only the first particle’s trajectory.</p>
+<p><strong>Fix</strong>: check the dataframe length:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> traj_to_dataframe(ds)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(df[<span class="st">'traj'</span>].nunique(), <span class="st">'trajectories'</span>)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(df[<span class="st">'time'</span>].nunique(), <span class="st">'time steps'</span>)</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="bu">len</span>(df), <span class="st">'rows'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>500 × 81 should give 40,500 rows. If it gives 81, you’re loading wrong.</p>
+</section>
+<section id="map-shows-particles-in-wrong-hemisphere" class="level3" data-number="B.4.2">
+<h3 data-number="B.4.2" class="anchored" data-anchor-id="map-shows-particles-in-wrong-hemisphere"><span class="header-section-number">B.4.2</span> Map shows particles in wrong hemisphere</h3>
+<p><strong>Symptom</strong>: trajectory plot shows points on the wrong continent.</p>
+<p><strong>Root cause</strong>: HYCOM uses 0..360 longitude convention internally and <em>sometimes</em> leaks through. Check if your particle longitudes are &gt;180.</p>
+<p><strong>Fix</strong>: in the post-processing, normalize:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>df[<span class="st">'lon'</span>] <span class="op">=</span> ((df[<span class="st">'lon'</span>] <span class="op">+</span> <span class="dv">180</span>) <span class="op">%</span> <span class="dv">360</span>) <span class="op">-</span> <span class="dv">180</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The fetcher does this on save; user code that reads the trajectory zarr directly may need to redo it.</p>
+</section>
+<section id="sst-plot-shows-300-k-colorbar" class="level3" data-number="B.4.3">
+<h3 data-number="B.4.3" class="anchored" data-anchor-id="sst-plot-shows-300-k-colorbar"><span class="header-section-number">B.4.3</span> SST plot shows “300 K” colorbar</h3>
+<p><strong>Symptom</strong>: temperature axis is in 280–310 K range.</p>
+<p><strong>Root cause</strong>: forgot to convert OSTIA from Kelvin to Celsius.</p>
+<p><strong>Fix</strong>: <code>T_celsius = T_kelvin - 273.15</code> before plotting. The dynamics-snapshot script does this explicitly.</p>
+</section>
+</section>
+<section id="quarto-book" class="level2" data-number="B.5">
+<h2 data-number="B.5" class="anchored" data-anchor-id="quarto-book"><span class="header-section-number">B.5</span> Quarto book</h2>
+<section id="quarto-render-fails-with-command-not-found" class="level3" data-number="B.5.1">
+<h3 data-number="B.5.1" class="anchored" data-anchor-id="quarto-render-fails-with-command-not-found"><span class="header-section-number">B.5.1</span> <code>quarto render</code> fails with “command not found”</h3>
+<p><strong>Symptom</strong>: <code>bash: quarto: command not found</code>.</p>
+<p><strong>Root cause</strong>: Quarto CLI not installed.</p>
+<p><strong>Fix</strong>: install from <a href="https://quarto.org/docs/get-started/">quarto.org/docs/get-started</a>. Single binary, no Python dependencies. Smoke test:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> check</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="code-chunks-fail-to-execute-on-render" class="level3" data-number="B.5.2">
+<h3 data-number="B.5.2" class="anchored" data-anchor-id="code-chunks-fail-to-execute-on-render"><span class="header-section-number">B.5.2</span> Code chunks fail to execute on render</h3>
+<p><strong>Symptom</strong>: <code>quarto render docs/</code> errors out on a <code>{python}</code> chunk.</p>
+<p><strong>Root cause</strong>: Quarto can’t find the right Python. By default it uses the system Python, which doesn’t have <code>xarray</code>, <code>parcels</code>, etc.</p>
+<p><strong>Fix</strong>: configure Quarto to use the conda env. Either:</p>
+<ul>
+<li><p><code>conda activate driftscope</code> before running <code>quarto render</code>.</p></li>
+<li><p>Or set <code>QUARTO_PYTHON</code> env var to the env’s python:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">QUARTO_PYTHON</span><span class="op">=</span>/path/to/miniconda/envs/driftscope/bin/python</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> render docs/</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
+</ul>
+</section>
+<section id="math-symbols-render-as-raw-dots" class="level3" data-number="B.5.3">
+<h3 data-number="B.5.3" class="anchored" data-anchor-id="math-symbols-render-as-raw-dots"><span class="header-section-number">B.5.3</span> Math symbols render as raw <code>\dots</code></h3>
+<p><strong>Symptom</strong>: Equations show <code>\frac{d\mathbf{X}}{dt}</code> instead of rendered math.</p>
+<p><strong>Root cause</strong>: KaTeX/MathJax not loading. Most likely your output is PDF and the LaTeX engine is missing.</p>
+<p><strong>Fix</strong>: for HTML output: ensure JavaScript is enabled in the browser; math should render via MathJax. For PDF: install LaTeX (<code>tinytex</code> is the easy option):</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> install tinytex</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="performance" class="level2" data-number="B.6">
+<h2 data-number="B.6" class="anchored" data-anchor-id="performance"><span class="header-section-number">B.6</span> Performance</h2>
+<section id="simulation-runs-out-of-memory" class="level3" data-number="B.6.1">
+<h3 data-number="B.6.1" class="anchored" data-anchor-id="simulation-runs-out-of-memory"><span class="header-section-number">B.6.1</span> Simulation runs out of memory</h3>
+<p><strong>Symptom</strong>: Python killed by OOM, or “MemoryError” during <code>pset.execute()</code>.</p>
+<p><strong>Root cause</strong>: Likely too many particles for the available RAM — each particle has a few-dozen-byte state, and trajectories are written to disk in chunks. 100k+ particles can be heavy.</p>
+<p><strong>Fix</strong>: reduce <code>--particles</code>. 500–2000 is the sweet spot for exploration; 10k+ is for production-grade ensembles.</p>
+</section>
+<section id="plots-take-forever-to-render" class="level3" data-number="B.6.2">
+<h3 data-number="B.6.2" class="anchored" data-anchor-id="plots-take-forever-to-render"><span class="header-section-number">B.6.2</span> Plots take forever to render</h3>
+<p><strong>Symptom</strong>: <code>df.plot()</code> on the full trajectory dataframe sits.</p>
+<p><strong>Root cause</strong>: 40,000+ scatter points × matplotlib = slow.</p>
+<p><strong>Fix</strong>: subsample. <code>df.sample(n=5000).plot(...)</code> is plenty for visual inspection. For final plots, use 2D histogram (<code>np.histogram2d</code> → <code>imshow</code>) instead of scatter.</p>
+</section>
+</section>
+<section id="when-in-doubt" class="level2" data-number="B.7">
+<h2 data-number="B.7" class="anchored" data-anchor-id="when-in-doubt"><span class="header-section-number">B.7</span> When in doubt</h2>
+<ol type="1">
+<li><strong>Read the docstring</strong> of the function that’s misbehaving. Most gotchas are documented there.</li>
+<li><strong><code>git log -p path/to/file.py | head -100</code></strong> — recent changes often reveal <em>why</em> a workaround exists.</li>
+<li><strong>Memory files</strong> in <a href="../memory/"><code>memory/</code></a> hold notes on past gotchas (especially the pyTMD ones).</li>
+<li><strong><code>scripts/</code></strong> contain working end-to-end examples for every non-trivial use case. If you can’t get something to work, see if there’s a script that does it.</li>
+</ol>
+<p>A mature Lagrangian-modeling workflow is 30% physics, 30% data plumbing, 20% bbox/grid bookkeeping, 20% troubleshooting. The first 30% is what’s interesting; the rest is what makes the first 30% reliable.</p>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    // Ensure there is a toggle, if there isn't float one in the top right
+    if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+      const a = window.document.createElement('a');
+      a.classList.add('top-right');
+      a.classList.add('quarto-color-scheme-toggle');
+      a.href = "";
+      a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+      const i = window.document.createElement("i");
+      i.classList.add('bi');
+      a.appendChild(i);
+      window.document.body.appendChild(a);
+    }
+    setColorSchemeToggle(hasAlternateSentinel())
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+    const viewSource = window.document.getElementById('quarto-view-source') ||
+                       window.document.getElementById('quarto-code-tools-source');
+    if (viewSource) {
+      const sourceUrl = viewSource.getAttribute("data-quarto-source-url");
+      viewSource.addEventListener("click", function(e) {
+        if (sourceUrl) {
+          // rstudio viewer pane
+          if (/\bcapabilities=\b/.test(window.location)) {
+            window.open(sourceUrl);
+          } else {
+            window.location.href = sourceUrl;
+          }
+        } else {
+          const modal = new bootstrap.Modal(document.getElementById('quarto-embedded-source-code-modal'));
+          modal.show();
+        }
+        return false;
+      });
+    }
+    function toggleCodeHandler(show) {
+      return function(e) {
+        const detailsSrc = window.document.querySelectorAll(".cell > details > .sourceCode");
+        for (let i=0; i<detailsSrc.length; i++) {
+          const details = detailsSrc[i].parentElement;
+          if (show) {
+            details.open = true;
+          } else {
+            details.removeAttribute("open");
+          }
+        }
+        const cellCodeDivs = window.document.querySelectorAll(".cell > .sourceCode");
+        const fromCls = show ? "hidden" : "unhidden";
+        const toCls = show ? "unhidden" : "hidden";
+        for (let i=0; i<cellCodeDivs.length; i++) {
+          const codeDiv = cellCodeDivs[i];
+          if (codeDiv.classList.contains(fromCls)) {
+            codeDiv.classList.remove(fromCls);
+            codeDiv.classList.add(toCls);
+          } 
+        }
+        return false;
+      }
+    }
+    const hideAllCode = window.document.getElementById("quarto-hide-all-code");
+    if (hideAllCode) {
+      hideAllCode.addEventListener("click", toggleCodeHandler(false));
+    }
+    const showAllCode = window.document.getElementById("quarto-show-all-code");
+    if (showAllCode) {
+      showAllCode.addEventListener("click", toggleCodeHandler(true));
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+            // target, if specified
+            link.setAttribute("target", "_blank");
+            if (link.getAttribute("rel") === null) {
+              link.setAttribute("rel", "noopener");
+            }
+            // default icon
+            link.classList.add("external");
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+<nav class="page-navigation">
+  <div class="nav-page nav-page-previous">
+      <a href="./22-appendix-glossary.html" class="pagination-link" aria-label="Glossary">
+        <i class="bi bi-arrow-left-short"></i> <span class="nav-page-text"><span class="chapter-number">A</span>&nbsp; <span class="chapter-title">Glossary</span></span>
+      </a>          
+  </div>
+  <div class="nav-page nav-page-next">
+  </div>
+</nav>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/example/sundarban/edit/main/23-appendix-troubleshooting.qmd" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li><li><a href="https://github.com/example/sundarban/blob/main/23-appendix-troubleshooting.qmd" class="toc-action"><i class="bi empty"></i>View source</a></li><li><a href="https://github.com/example/sundarban/issues/new" class="toc-action"><i class="bi empty"></i>Report an issue</a></li></ul></div></div></div></footer><script src="site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>
